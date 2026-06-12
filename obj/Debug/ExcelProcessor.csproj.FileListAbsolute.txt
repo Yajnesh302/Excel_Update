@@ -1,0 +1,9 @@
+e:\Excel\bin\ExcelProcessor.dll.config
+e:\Excel\bin\ExcelProcessor.dll
+e:\Excel\bin\ExcelProcessor.pdb
+e:\Excel\bin\EPPlus.dll
+e:\Excel\bin\Oracle.ManagedDataAccess.dll
+e:\Excel\bin\EPPlus.xml
+e:\Excel\obj\Debug\ExcelProcessor.dll
+e:\Excel\obj\Debug\ExcelProcessor.pdb
+e:\Excel\obj\Debug\ExcelProcessor.csprojResolveAssemblyReference.cache
