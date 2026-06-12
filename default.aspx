@@ -38,9 +38,9 @@
       
       <!-- Database & Configuration Panel -->
       <div class="col-lg-5 col-md-12">
-        <div class="glass-panel">
+        <div class="glass-panel mb-4">
           <div class="card-title-container">
-            <h4 class="mb-0 text-white font-weight-bold">Oracle Database</h4>
+            <h4 class="mb-0 text-white font-weight-bold">Connection Status</h4>
             <button class="btn btn-sm btn-glass-secondary py-1 px-2" ng-click="checkDbStatus()" ng-disabled="isProcessing" title="Refresh Status">
               Refresh
             </button>
@@ -80,8 +80,17 @@
               </span>
             </div>
           </div>
+        </div>
 
-
+        <!-- Guidelines Panel -->
+        <div class="glass-panel p-3 mb-4" style="background: rgba(0, 242, 254, 0.03); border: 1px solid rgba(0, 242, 254, 0.12); border-radius: 8px;">
+          <h6 class="font-weight-bold mb-2" style="color: #00f2fe; font-size: 14px;">Important Guidelines &amp; Info:</h6>
+          <ul class="text-muted small mb-0 pl-3" style="line-height: 1.6; list-style-type: disc;">
+            <li class="mb-1">Accepted file formats are Excel (<strong>.xlsx</strong>, <strong>.xls</strong>) and CSV (<strong>.csv</strong>).</li>
+            <li class="mb-1">There must be an identifier column header like <strong>PIS</strong> or <strong>PIS NO</strong> present in the sheet to match records.</li>
+            <li class="mb-1">The retrieved values (such as the Account Number) will be automatically appended as new columns at the end of each row (last columns).</li>
+            <li>If required, you can also select other database columns listed in the checklist below to pull and append.</li>
+          </ul>
         </div>
       </div>
 
@@ -108,7 +117,7 @@
             </svg>
             <h5 class="text-white">Drag &amp; drop Excel file here</h5>
             <p class="text-muted small">or click to browse local files</p>
-            <input type="file" id="fileInput" accept=".xlsx, .xls" onchange="angular.element(this).scope().onFileSelect(this)" />
+            <input type="file" id="fileInput" accept=".xlsx, .xls, .csv" onchange="angular.element(this).scope().onFileSelect(this)" />
           </div>
 
           <!-- Selected File Panel -->
@@ -139,6 +148,17 @@
 
           <!-- Actions -->
           <div class="mt-4" ng-show="fileSelected && !isProcessing">
+            <!-- Sheet Selection Checklist -->
+            <div class="mb-4 p-3 rounded" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05);" ng-show="sheetNames.length > 1">
+              <label class="text-muted small d-block mb-3 font-weight-bold text-uppercase" style="letter-spacing: 0.5px;">Select Sheets to Process:</label>
+              <div class="d-flex flex-wrap" style="gap: 20px;">
+                <label ng-repeat="sheet in sheetNames" class="d-flex align-items-center text-white small mb-0" style="cursor: pointer; user-select: none;">
+                  <input type="checkbox" ng-model="selectedSheets[sheet]" style="width: 16px; height: 16px; margin-right: 8px; cursor: pointer;" />
+                  {{ sheet }}
+                </label>
+              </div>
+            </div>
+
             <!-- Dynamic Column Selector Checklist -->
             <div class="mb-4 p-3 rounded" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05);" ng-show="mappableColumns.length > 0">
               <label class="text-muted small d-block mb-3 font-weight-bold text-uppercase" style="letter-spacing: 0.5px;">Columns to Pull from Database:</label>
@@ -198,7 +218,6 @@
 
     <!-- Footer -->
     <div class="text-center text-muted small mt-5">
-      <p>Designed and Configured for Visual Studio 2015 &amp; Oracle 11g | Working Offline</p>
     </div>
 
   </div>

@@ -14,6 +14,8 @@
       $scope.errorMsg = '';
       $scope.successMsg = '';
       $scope.selectedCols = {};
+      $scope.sheetNames = [];
+      $scope.selectedSheets = {};
 
       // Fetch database and table configuration status
       $scope.checkDbStatus = function () {
@@ -48,14 +50,54 @@
       };
 
 
+      // Unified file setting logic and query sheet names
+      $scope.setFile = function (file) {
+        $scope.fileSelected = file;
+        $scope.fileName = file.name;
+        $scope.errorMsg = '';
+        $scope.successMsg = '';
+        $scope.sheetNames = [];
+        $scope.selectedSheets = {};
+        
+        $scope.fetchSheetNames();
+      };
+
+      // Query the server to find sheet names inside the uploaded file
+      $scope.fetchSheetNames = function () {
+        if (!$scope.fileSelected) return;
+        $scope.isProcessing = true;
+        
+        var fd = new FormData();
+        fd.append('excelFile', $scope.fileSelected);
+        
+        $http.post('default.aspx?action=sheets', fd, {
+          transformRequest: angular.identity,
+          headers: { 'Content-Type': undefined }
+        })
+        .then(function (response) {
+          $scope.isProcessing = false;
+          if (response.data.success) {
+            $scope.sheetNames = response.data.sheets || [];
+            // Pre-select all worksheets by default
+            angular.forEach($scope.sheetNames, function (sheet) {
+              $scope.selectedSheets[sheet] = true;
+            });
+          } else {
+            $scope.errorMsg = 'Failed to read sheet names: ' + response.data.error;
+            $scope.clearFileDirect();
+          }
+        }, function (error) {
+          $scope.isProcessing = false;
+          $scope.errorMsg = 'Error reading sheet names from file.';
+          $scope.clearFileDirect();
+        });
+      };
+
       // File Selection logic
       $scope.onFileSelect = function (element) {
         $scope.$apply(function () {
           if (element.files.length > 0) {
-            $scope.fileSelected = element.files[0];
-            $scope.fileName = $scope.fileSelected.name;
-            $scope.errorMsg = '';
-            $scope.successMsg = '';
+            $scope.setFile(element.files[0]);
           }
         });
       };
@@ -79,26 +121,30 @@
             dropZone.classList.remove('dragover');
             if (e.dataTransfer.files.length > 0) {
               $scope.$apply(function() {
-                $scope.fileSelected = e.dataTransfer.files[0];
-                $scope.fileName = $scope.fileSelected.name;
-                $scope.errorMsg = '';
-                $scope.successMsg = '';
+                $scope.setFile(e.dataTransfer.files[0]);
               });
             }
           });
         }
       });
 
-      // Clear current file selection
-      $scope.clearFile = function () {
+      // Clear current file selection helper
+      $scope.clearFileDirect = function () {
         $scope.fileSelected = null;
         $scope.fileName = '';
-        $scope.successMsg = '';
-        $scope.errorMsg = '';
+        $scope.sheetNames = [];
+        $scope.selectedSheets = {};
         var fileInput = document.getElementById('fileInput');
         if (fileInput) {
           fileInput.value = '';
         }
+      };
+
+      // Clear button handler (resets messages)
+      $scope.clearFile = function () {
+        $scope.clearFileDirect();
+        $scope.successMsg = '';
+        $scope.errorMsg = '';
       };
 
       // Upload and Process Excel
@@ -120,6 +166,18 @@
           return;
         }
 
+        var selectedSheetsList = [];
+        angular.forEach($scope.selectedSheets, function(value, key) {
+          if (value) {
+            selectedSheetsList.push(key);
+          }
+        });
+
+        if ($scope.sheetNames.length > 0 && selectedSheetsList.length === 0) {
+          $scope.errorMsg = 'Please select at least one sheet to process.';
+          return;
+        }
+
         $scope.isProcessing = true;
         $scope.errorMsg = '';
         $scope.successMsg = '';
@@ -127,6 +185,7 @@
         var fd = new FormData();
         fd.append('excelFile', $scope.fileSelected);
         fd.append('columns', cols.join(','));
+        fd.append('sheets', selectedSheetsList.join(','));
 
         $http.post('default.aspx?action=process', fd, {
           transformRequest: angular.identity,

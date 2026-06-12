@@ -32,6 +32,9 @@ namespace ExcelProcessor
                     case "status":
                         CheckStatus();
                         break;
+                    case "sheets":
+                        GetSheets();
+                        break;
                     case "process":
                         ProcessExcel();
                         break;
@@ -146,6 +149,41 @@ namespace ExcelProcessor
             Response.Write(serializer.Serialize(result));
         }
 
+        private void GetSheets()
+        {
+            if (Request.Files.Count == 0)
+            {
+                ReturnError("No file uploaded.");
+                return;
+            }
+
+            HttpPostedFile file = Request.Files[0];
+            if (file == null || file.ContentLength == 0)
+            {
+                ReturnError("Uploaded file is empty.");
+                return;
+            }
+
+            try
+            {
+                using (ExcelPackage package = new ExcelPackage(file.InputStream))
+                {
+                    List<string> sheetNames = new List<string>();
+                    foreach (ExcelWorksheet ws in package.Workbook.Worksheets)
+                    {
+                        sheetNames.Add(ws.Name);
+                    }
+
+                    var serializer = new JavaScriptSerializer();
+                    Response.Write(serializer.Serialize(new { success = true, sheets = sheetNames }));
+                }
+            }
+            catch (Exception ex)
+            {
+                ReturnError("Failed to parse sheet names: " + ex.Message);
+            }
+        }
+
 
         private void ProcessExcel()
         {
@@ -219,7 +257,7 @@ namespace ExcelProcessor
                     {
                         while (reader.Read())
                         {
-                            string pisVal = reader[pkColumn].ToString().Trim();
+                            string pisVal = CleanPisValue(reader[pkColumn].ToString());
                             if (!string.IsNullOrEmpty(pisVal))
                             {
                                 var rowMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -245,6 +283,27 @@ namespace ExcelProcessor
                 return;
             }
 
+            if (file.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+            {
+                ProcessCsvFile(file, colsToQuery, employeeData, allowedColumnsMap, pkColumn);
+                return;
+            }
+
+            string selectedSheetsParam = Request.Form["sheets"];
+            List<string> selectedSheetsList = new List<string>();
+            if (!string.IsNullOrEmpty(selectedSheetsParam))
+            {
+                string[] ss = selectedSheetsParam.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (string s in ss)
+                {
+                    string trimmed = s.Trim();
+                    if (!string.IsNullOrEmpty(trimmed) && !selectedSheetsList.Contains(trimmed))
+                    {
+                        selectedSheetsList.Add(trimmed);
+                    }
+                }
+            }
+
             try
             {
                 // Process the Excel spreadsheet in memory using EPPlus
@@ -256,86 +315,116 @@ namespace ExcelProcessor
                         return;
                     }
 
-                    ExcelWorksheet worksheet = package.Workbook.Worksheets[1];
-                    var dimension = worksheet.Dimension;
-                    if (dimension == null)
-                    {
-                        ReturnError("Excel worksheet is empty.");
-                        return;
-                    }
+                    bool processedAny = false;
 
-                    int rowCount = dimension.End.Row;
-                    int colCount = dimension.End.Column;
-
-                    // Scan header row to identify PIS column
-                    int pisColIndex = -1;
-                    for (int c = 1; c <= colCount; c++)
+                    // Scan all worksheets in the workbook to process selected sheets
+                    foreach (ExcelWorksheet ws in package.Workbook.Worksheets)
                     {
-                        string headerText = worksheet.Cells[1, c].Text;
-                        if (headerText != null)
+                        // Filter by sheet name if list is provided
+                        if (selectedSheetsList.Count > 0 && !selectedSheetsList.Contains(ws.Name))
                         {
-                            headerText = headerText.Trim();
-                            if (string.Equals(headerText, "PIS NO", StringComparison.OrdinalIgnoreCase) ||
-                                string.Equals(headerText, "PIS", StringComparison.OrdinalIgnoreCase) ||
-                                string.Equals(headerText, "PIS_NO", StringComparison.OrdinalIgnoreCase) ||
-                                string.Equals(headerText, pkColumn, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        }
+
+                        var dimension = ws.Dimension;
+                        if (dimension == null)
+                        {
+                            if (selectedSheetsList.Contains(ws.Name))
                             {
-                                pisColIndex = c;
+                                ReturnError(string.Format("Selected sheet '{0}' is empty.", ws.Name));
+                                return;
+                            }
+                            continue;
+                        }
+
+                        int rCount = dimension.End.Row;
+                        int cCount = dimension.End.Column;
+                        int maxHeaderScanRows = Math.Min(rCount, 25);
+                        int pisColIndex = -1;
+                        int headerRowIndex = -1;
+
+                        for (int r = 1; r <= maxHeaderScanRows; r++)
+                        {
+                            for (int c = 1; c <= cCount; c++)
+                            {
+                                string cellText = ws.Cells[r, c].Text;
+                                if (IsPisHeader(cellText, pkColumn))
+                                {
+                                    pisColIndex = c;
+                                    headerRowIndex = r;
+                                    break;
+                                }
+                            }
+                            if (pisColIndex != -1)
+                            {
                                 break;
                             }
                         }
-                    }
 
-                    if (pisColIndex == -1)
-                    {
-                        ReturnError("Could not find a 'PIS NO' or 'PIS' column in the Excel header row.");
-                        return;
-                    }
-
-                    // Map column headers to append
-                    Dictionary<string, int> targetColIndexes = new Dictionary<string, int>();
-                    foreach (string col in colsToQuery)
-                    {
-                        colCount++;
-                        targetColIndexes[col] = colCount;
-
-                        string displayName;
-                        if (!allowedColumnsMap.TryGetValue(col, out displayName))
+                        if (pisColIndex == -1)
                         {
-                            displayName = col;
+                            if (selectedSheetsList.Contains(ws.Name))
+                            {
+                                ReturnError(string.Format("Selected sheet '{0}' does not contain a PIS column.", ws.Name));
+                                return;
+                            }
+                            continue;
                         }
 
-                        worksheet.Cells[1, colCount].Value = displayName;
-                    }
-                    
-                    // Match cells by PIS values
-                    for (int r = 2; r <= rowCount; r++)
-                    {
-                        string pis = worksheet.Cells[r, pisColIndex].Text;
-                        if (pis != null)
+                        processedAny = true;
+
+                        // Map column headers to append
+                        Dictionary<string, int> targetColIndexes = new Dictionary<string, int>();
+                        int currentColCount = cCount;
+                        foreach (string col in colsToQuery)
                         {
-                            pis = pis.Trim();
-                            if (!string.IsNullOrEmpty(pis))
+                            currentColCount++;
+                            targetColIndexes[col] = currentColCount;
+
+                            string displayName;
+                            if (!allowedColumnsMap.TryGetValue(col, out displayName))
                             {
-                                Dictionary<string, string> record;
-                                if (employeeData.TryGetValue(pis, out record))
+                                displayName = col;
+                            }
+
+                            ws.Cells[headerRowIndex, currentColCount].Value = displayName;
+                        }
+                        
+                        // Match cells by PIS values, starting directly after the header row
+                        for (int r = headerRowIndex + 1; r <= rCount; r++)
+                        {
+                            string pis = ws.Cells[r, pisColIndex].Text;
+                            if (pis != null)
+                            {
+                                pis = CleanPisValue(pis);
+                                if (!string.IsNullOrEmpty(pis))
                                 {
-                                    foreach (string col in colsToQuery)
+                                    Dictionary<string, string> record;
+                                    if (employeeData.TryGetValue(pis, out record))
                                     {
-                                        int targetCol = targetColIndexes[col];
-                                        worksheet.Cells[r, targetCol].Value = record[col];
+                                        foreach (string col in colsToQuery)
+                                        {
+                                            int targetCol = targetColIndexes[col];
+                                            ws.Cells[r, targetCol].Value = record[col];
+                                        }
                                     }
-                                }
-                                else
-                                {
-                                    foreach (string col in colsToQuery)
+                                    else
                                     {
-                                        int targetCol = targetColIndexes[col];
-                                        worksheet.Cells[r, targetCol].Value = "Not Found";
+                                        foreach (string col in colsToQuery)
+                                        {
+                                            int targetCol = targetColIndexes[col];
+                                            ws.Cells[r, targetCol].Value = "Not Found";
+                                        }
                                     }
                                 }
                             }
                         }
+                    }
+
+                    if (!processedAny)
+                    {
+                        ReturnError("No valid worksheets containing a PIS column were processed.");
+                        return;
                     }
 
                     // Output modified spreadsheet directly to browser response stream
@@ -368,6 +457,264 @@ namespace ExcelProcessor
             Response.StatusCode = 200; // Allow client to read structured JSON
             var serializer = new JavaScriptSerializer();
             Response.Write(serializer.Serialize(new { error = message }));
+        }
+
+        private static bool IsPisHeader(string text, string pkColumn)
+        {
+            if (string.IsNullOrEmpty(text)) return false;
+            
+            string normalized = text.Replace('\u00A0', ' ');
+            normalized = normalized.Replace('\r', ' ').Replace('\n', ' ').Replace('\t', ' ');
+            while (normalized.Contains("  "))
+            {
+                normalized = normalized.Replace("  ", " ");
+            }
+            
+            normalized = normalized.Trim().ToUpper();
+            
+            if (normalized == "PIS" || 
+                normalized == "PIS NO" || 
+                normalized == "PIS NO." || 
+                normalized == "PIS_NO" || 
+                normalized == "PISNUMBER" || 
+                normalized == "PIS NUMBER" || 
+                normalized == "PIS_NUMBER" || 
+                normalized == "PISNUM" || 
+                normalized == "PIS_NUM")
+            {
+                return true;
+            }
+            
+            if (!string.IsNullOrEmpty(pkColumn))
+            {
+                string pkNormalized = pkColumn.Trim().ToUpper();
+                if (normalized == pkNormalized)
+                {
+                    return true;
+                }
+            }
+            
+            return false;
+        }
+
+        private static string CleanPisValue(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return "";
+            string cleaned = text.Replace('\u00A0', ' ');
+            cleaned = cleaned.Replace('\r', ' ').Replace('\n', ' ').Replace('\t', ' ');
+            while (cleaned.Contains("  "))
+            {
+                cleaned = cleaned.Replace("  ", " ");
+            }
+            return cleaned.Trim();
+        }
+
+        private void ProcessCsvFile(HttpPostedFile file, List<string> colsToQuery, Dictionary<string, Dictionary<string, string>> employeeData, Dictionary<string, string> allowedColumnsMap, string pkColumn)
+        {
+            try
+            {
+                List<List<string>> csvRows = ParseCsv(file.InputStream);
+                if (csvRows.Count == 0)
+                {
+                    ReturnError("Uploaded CSV file is empty.");
+                    return;
+                }
+
+                int pisColIndex = -1;
+                int headerRowIndex = -1;
+                int rowCount = csvRows.Count;
+                int colCount = 0;
+
+                int maxHeaderScanRows = Math.Min(rowCount, 25);
+                for (int r = 0; r < maxHeaderScanRows; r++)
+                {
+                    var row = csvRows[r];
+                    for (int c = 0; c < row.Count; c++)
+                    {
+                        string cellText = row[c];
+                        if (IsPisHeader(cellText, pkColumn))
+                        {
+                            pisColIndex = c;
+                            headerRowIndex = r;
+                            colCount = row.Count;
+                            break;
+                        }
+                    }
+                    if (pisColIndex != -1) break;
+                }
+
+                if (pisColIndex == -1)
+                {
+                    ReturnError("Could not find a 'PIS' or 'PIS NO' column in the uploaded CSV file.");
+                    return;
+                }
+
+                // Map column headers to append
+                var headerRow = csvRows[headerRowIndex];
+                foreach (string col in colsToQuery)
+                {
+                    string displayName;
+                    if (!allowedColumnsMap.TryGetValue(col, out displayName))
+                    {
+                        displayName = col;
+                    }
+                    headerRow.Add(displayName);
+                }
+                
+                // Match and append values
+                for (int r = headerRowIndex + 1; r < rowCount; r++)
+                {
+                    var row = csvRows[r];
+                    while (row.Count < colCount)
+                    {
+                        row.Add("");
+                    }
+
+                    string pisVal = "";
+                    if (pisColIndex < row.Count)
+                    {
+                        pisVal = CleanPisValue(row[pisColIndex]);
+                    }
+
+                    Dictionary<string, string> record = null;
+                    bool hasRecord = false;
+                    if (!string.IsNullOrEmpty(pisVal))
+                    {
+                        hasRecord = employeeData.TryGetValue(pisVal, out record);
+                    }
+
+                    foreach (string col in colsToQuery)
+                    {
+                        string val = hasRecord ? record[col] : "Not Found";
+                        row.Add(val);
+                    }
+                }
+
+                byte[] fileBytes = WriteCsv(csvRows);
+
+                Response.Clear();
+                Response.ContentType = "text/csv";
+                Response.AddHeader("Content-Disposition", string.Format("attachment; filename=\"{0}\"", file.FileName));
+                Response.BinaryWrite(fileBytes);
+                Response.Flush();
+                Response.SuppressContent = true;
+                HttpContext.Current.ApplicationInstance.CompleteRequest();
+            }
+            catch (Exception ex)
+            {
+                ReturnError("CSV Processing Error: " + ex.Message);
+            }
+        }
+
+        private static List<List<string>> ParseCsv(Stream stream)
+        {
+            var result = new List<List<string>>();
+            using (var reader = new StreamReader(stream, System.Text.Encoding.UTF8))
+            {
+                var currentRow = new List<string>();
+                var currentField = new System.Text.StringBuilder();
+                bool inQuotes = false;
+                int ch;
+
+                while ((ch = reader.Read()) != -1)
+                {
+                    char c = (char)ch;
+
+                    if (inQuotes)
+                    {
+                        if (c == '"')
+                        {
+                            int nextCh = reader.Peek();
+                            if (nextCh == '"') // Escaped quote
+                            {
+                                currentField.Append('"');
+                                reader.Read(); // Consume the second quote
+                            }
+                            else
+                            {
+                                inQuotes = false; // End of quoted field
+                            }
+                        }
+                        else
+                        {
+                            currentField.Append(c);
+                        }
+                    }
+                    else
+                    {
+                        if (c == '"')
+                        {
+                            inQuotes = true;
+                        }
+                        else if (c == ',')
+                        {
+                            currentRow.Add(currentField.ToString());
+                            currentField.Length = 0;
+                        }
+                        else if (c == '\r')
+                        {
+                            if (reader.Peek() == '\n')
+                            {
+                                reader.Read();
+                            }
+                            currentRow.Add(currentField.ToString());
+                            currentField.Length = 0;
+                            result.Add(currentRow);
+                            currentRow = new List<string>();
+                        }
+                        else if (c == '\n')
+                        {
+                            currentRow.Add(currentField.ToString());
+                            currentField.Length = 0;
+                            result.Add(currentRow);
+                            currentRow = new List<string>();
+                        }
+                        else
+                        {
+                            currentField.Append(c);
+                        }
+                    }
+                }
+
+                if (currentField.Length > 0 || currentRow.Count > 0)
+                {
+                    currentRow.Add(currentField.ToString());
+                    result.Add(currentRow);
+                }
+            }
+
+            return result;
+        }
+
+        private static byte[] WriteCsv(List<List<string>> rows)
+        {
+            using (var ms = new MemoryStream())
+            using (var writer = new StreamWriter(ms, System.Text.Encoding.UTF8))
+            {
+                foreach (var row in rows)
+                {
+                    for (int i = 0; i < row.Count; i++)
+                    {
+                        string field = row[i] ?? "";
+                        if (field.Contains(",") || field.Contains("\"") || field.Contains("\r") || field.Contains("\n"))
+                        {
+                            writer.Write("\"" + field.Replace("\"", "\"\"") + "\"");
+                        }
+                        else
+                        {
+                            writer.Write(field);
+                        }
+
+                        if (i < row.Count - 1)
+                        {
+                            writer.Write(",");
+                        }
+                    }
+                    writer.Write("\r\n");
+                }
+                writer.Flush();
+                return ms.ToArray();
+            }
         }
     }
 }
