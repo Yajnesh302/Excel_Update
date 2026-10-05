@@ -5,8 +5,8 @@
   <meta charset="utf-8" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
-  <meta name="description" content="Offline Excel & Oracle Data Processor" />
-  <title>Excel &amp; Oracle Data Processor</title>
+  <meta name="description" content="Offline Employee Data Sheet Matcher and Record Enricher" />
+  <title>Employee Data Processor</title>
   
   <!-- Local Offline Stylesheets -->
   <link rel="stylesheet" href="lib/bootstrap.min.css" />
@@ -16,95 +16,183 @@
 
   <div class="app-container">
     
-    <!-- Title Section -->
-    <div class="text-center mb-5">
-      <h1 class="app-title">Excel &amp; Oracle Data Processor</h1>
-      <p class="subtitle">Process sheets and inject account numbers offline using PIS matching</p>
-    </div>
-
-    <!-- Alerts -->
-    <div class="row">
-      <div class="col-12">
-        <div class="alert alert-danger" ng-if="errorMsg" role="alert" style="border-radius: 8px; background: rgba(255, 8, 68, 0.15); border-color: rgba(255, 8, 68, 0.3); color: #ffccd5;">
-          <strong>Error:</strong> {{ errorMsg }}
+    <!-- Top Navigation Header -->
+    <header class="top-navbar">
+      <div class="brand-wrapper">
+        <div class="brand-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#00f2fe" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
         </div>
-        <div class="alert alert-success" ng-if="successMsg" role="alert" style="border-radius: 8px; background: rgba(0, 255, 135, 0.15); border-color: rgba(0, 255, 135, 0.3); color: #d2ffd6;">
-          <strong>Success:</strong> {{ successMsg }}
+        <div>
+          <h1 class="app-title">Employee Data Processor</h1>
+          <p class="subtitle">Auto-detects employee identifiers, matches master records, and enriches spreadsheets offline</p>
+        </div>
+      </div>
+
+      <div class="d-flex align-items-center" style="gap: 12px;">
+        <span class="status-pill status-online" ng-if="dbStatus === 'online'">
+          &#9679; Service Active ({{ recordCount }} Records)
+        </span>
+        <span class="status-pill status-offline" ng-if="dbStatus === 'offline'">
+          &#9679; Service Offline
+        </span>
+        <button class="btn btn-sm btn-glass-secondary py-2 px-3" ng-click="checkDbStatus()" ng-disabled="isProcessing" title="Refresh System Status">
+          Refresh Status
+        </button>
+      </div>
+    </header>
+
+    <!-- Top Quick Metric Stats Grid -->
+    <div class="quick-stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+            <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+          </svg>
+        </div>
+        <div class="stat-content">
+          <span class="stat-label">Master Service</span>
+          <span class="stat-value" ng-if="dbStatus === 'online'" style="color: #00ff87;">Connected (Online)</span>
+          <span class="stat-value" ng-if="dbStatus !== 'online'" style="color: #ff3366;">Disconnected</span>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="9" cy="7" r="4"></circle>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+          </svg>
+        </div>
+        <div class="stat-content">
+          <span class="stat-label">Employee Directory</span>
+          <span class="stat-value">{{ recordCount }} Active Records</span>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+            <line x1="8" y1="21" x2="16" y2="21"></line>
+            <line x1="12" y1="17" x2="12" y2="21"></line>
+          </svg>
+        </div>
+        <div class="stat-content">
+          <span class="stat-label">Supported Identifiers</span>
+          <span class="stat-value">PIS, PCNO, ACCNO, GPF</span>
         </div>
       </div>
     </div>
 
+    <!-- Main Content Row -->
     <div class="row">
       
-      <!-- Database & Configuration Panel -->
-      <div class="col-lg-5 col-md-12">
+      <!-- Left Column: Guidelines & Output Preview -->
+      <div class="col-xl-4 col-lg-5 col-md-12">
+        
+        <!-- How It Works Panel -->
         <div class="glass-panel mb-4">
-          <div class="card-title-container">
-            <h4 class="mb-0 text-white font-weight-bold">Connection Status</h4>
-            <button class="btn btn-sm btn-glass-secondary py-1 px-2" ng-click="checkDbStatus()" ng-disabled="isProcessing" title="Refresh Status">
-              Refresh
-            </button>
-          </div>
-          
-          <hr style="border-color: rgba(255, 255, 255, 0.1);" />
-
-          <!-- Connection Status Info -->
-          <div class="mb-4">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-              <span class="text-muted">Connection String</span>
-              <span class="badge badge-pis">Web.config</span>
-            </div>
-            <div class="d-flex justify-content-between align-items-center mb-3">
-              <span class="text-muted">DB Status</span>
-              <span class="status-pill status-online" ng-if="dbStatus === 'online'">
-                &#9679; Online
-              </span>
-              <span class="status-pill status-offline" ng-if="dbStatus === 'offline'">
-                &#9679; Disconnected
-              </span>
-              <span class="status-pill status-unknown" ng-if="dbStatus === 'unknown'">
-                &#9679; Unknown
-              </span>
-            </div>
-
-            <div class="d-flex justify-content-between align-items-center mb-3">
-              <span class="text-muted">Employee Table</span>
-              <span class="status-pill status-online" ng-if="tableStatus === 'found'">
-                &#9679; Active ({{ recordCount }} rows)
-              </span>
-              <span class="status-pill status-offline" ng-if="tableStatus === 'missing'">
-                &#9679; Missing Table
-              </span>
-              <span class="status-pill status-unknown" ng-if="tableStatus === 'unknown'">
-                &#9679; Unknown
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Guidelines Panel -->
-        <div class="glass-panel p-3 mb-4" style="background: rgba(0, 242, 254, 0.03); border: 1px solid rgba(0, 242, 254, 0.12); border-radius: 8px;">
-          <h6 class="font-weight-bold mb-2" style="color: #00f2fe; font-size: 14px;">Important Guidelines &amp; Info:</h6>
-          <ul class="text-muted small mb-0 pl-3" style="line-height: 1.6; list-style-type: disc;">
-            <li class="mb-1">Accepted file formats are Excel (<strong>.xlsx</strong>, <strong>.xls</strong>) and CSV (<strong>.csv</strong>).</li>
-            <li class="mb-1">There must be an identifier column header like <strong>PIS</strong> or <strong>PIS NO</strong> present in the sheet to match records.</li>
-            <li class="mb-1">The retrieved values (such as the Account Number) will be automatically appended as new columns at the end of each row (last columns).</li>
-            <li>If required, you can also select other database columns listed in the checklist below to pull and append.</li>
+          <h5 class="text-white font-weight-bold mb-3" style="font-size: 16px;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" stroke="#00f2fe" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px; vertical-align: -3px;">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+            System Overview &amp; Features
+          </h5>
+          <ul class="text-muted small mb-0 pl-3" style="line-height: 1.8; list-style-type: disc;">
+            <li class="mb-2"><strong>Smart Auto-Detection:</strong> Uploaded spreadsheets are automatically scanned to detect <code>ACCNO</code>, <code>PIS</code>, <code>PCNO</code>, or <code>GPFPRAN</code> headers.</li>
+            <li class="mb-2"><strong>Custom Mapping:</strong> If your sheet uses unique column headers, simply choose the matching identifier column from the dropdown.</li>
+            <li class="mb-2"><strong>Customizable Columns:</strong> Select any combination of employee fields to append directly to your downloaded spreadsheet.</li>
+            <li><strong>Supported Formats:</strong> Works seamlessly with <strong>.xlsx</strong>, <strong>.xls</strong>, and <strong>.csv</strong> files.</li>
           </ul>
         </div>
+
+        <!-- Demonstration Preview Table Panel (Balances height of left column) -->
+        <div class="glass-panel">
+          <h5 class="text-white font-weight-bold mb-2" style="font-size: 16px;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" stroke="#00ff87" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px; vertical-align: -3px;">
+              <polyline points="9 11 12 14 22 4"></polyline>
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+            </svg>
+            Example Row Transformation
+          </h5>
+          <p class="text-muted small mb-3">Retrieved fields are automatically appended to the end of each row:</p>
+          
+          <div class="preview-table-container">
+            <table class="preview-table">
+              <thead>
+                <tr>
+                  <th>Input Key</th>
+                  <th style="color: #00f2fe;">+ PCNO</th>
+                  <th style="color: #00ff87;">+ PIS</th>
+                  <th style="color: #4facfe;">+ ACCNO</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>2008AE10 <span class="badge-pis">PIS</span></td>
+                  <td>5001</td>
+                  <td>2008AE10</td>
+                  <td>GPF-1111</td>
+                </tr>
+                <tr>
+                  <td>2008AE12 <span class="badge-pis">PIS</span></td>
+                  <td>5010</td>
+                  <td>2008AE12</td>
+                  <td>GPF-2222</td>
+                </tr>
+                <tr>
+                  <td>GPF-1111 <span class="badge-pis">ACC</span></td>
+                  <td>5001</td>
+                  <td>2008AE10</td>
+                  <td>GPF-1111</td>
+                </tr>
+                <tr>
+                  <td>5003 <span class="badge-pis">PCNO</span></td>
+                  <td>5003</td>
+                  <td>2012BC24</td>
+                  <td>PRAN-3333</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
       </div>
 
-      <!-- File Processing Panel -->
-      <div class="col-lg-7 col-md-12">
+      <!-- Right Column: Interactive Processing Studio -->
+      <div class="col-xl-8 col-lg-7 col-md-12">
         <div class="glass-panel">
-          <h4 class="mb-3 text-white font-weight-bold">Upload &amp; Process Sheet</h4>
-          <p class="text-muted small mb-4">
-            Select an Excel file (<code>.xlsx</code> or <code>.xls</code>). The server will check each row's <strong>PIS NO</strong> against the database, append an <strong>Account Number</strong> column, and download a processed copy.
-          </p>
+          
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+              <h4 class="mb-1 text-white font-weight-bold">Spreadsheet Processing Studio</h4>
+              <p class="text-muted small mb-0">Upload any spreadsheet to automatically match records and download an enriched copy.</p>
+            </div>
+          </div>
 
-          <!-- Upload Drop Zone -->
+          <!-- Alert Notifications -->
+          <div class="alert alert-danger" ng-if="errorMsg" role="alert" style="border-radius: 8px; background: rgba(255, 8, 68, 0.15); border-color: rgba(255, 8, 68, 0.3); color: #ffccd5; margin-bottom: 20px;">
+            <strong>Notice:</strong> {{ errorMsg }}
+          </div>
+          <div class="alert alert-success" ng-if="successMsg" role="alert" style="border-radius: 8px; background: rgba(0, 255, 135, 0.15); border-color: rgba(0, 255, 135, 0.3); color: #d2ffd6; margin-bottom: 20px;">
+            <strong>Success:</strong> {{ successMsg }}
+          </div>
+
+          <!-- Upload Drop Zone (Visible when no file is selected) -->
           <div id="drop-zone" class="drop-zone mb-4" ng-show="!fileSelected">
-            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="mb-3" viewBox="0 0 24 24" style="stroke: url(#cyanBlueGradient); filter: drop-shadow(0 0 8px rgba(0, 242, 254, 0.3));">
+            <svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="mb-3" viewBox="0 0 24 24" style="stroke: url(#cyanBlueGradient); filter: drop-shadow(0 0 10px rgba(0, 242, 254, 0.35));">
               <defs>
                 <linearGradient id="cyanBlueGradient" x1="0%" y1="0%" x2="100%" y2="100%">
                   <stop offset="0%" stop-color="#00f2fe" />
@@ -115,42 +203,118 @@
               <polyline points="17 8 12 3 7 8"></polyline>
               <line x1="12" y1="3" x2="12" y2="15"></line>
             </svg>
-            <h5 class="text-white">Drag &amp; drop Excel file here</h5>
-            <p class="text-muted small">or click to browse local files</p>
+            <h5 class="text-white font-weight-bold mb-1">Drag &amp; drop your Excel or CSV file here</h5>
+            <p class="text-muted small mb-0">or click to browse local files (.xlsx, .xls, .csv)</p>
             <input type="file" id="fileInput" accept=".xlsx, .xls, .csv" onchange="angular.element(this).scope().onFileSelect(this)" />
           </div>
 
-          <!-- Selected File Panel -->
-          <div class="p-3 mb-4 rounded d-flex justify-content-between align-items-center" ng-show="fileSelected" style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);">
+          <!-- Selected File Header (Visible when file is selected) -->
+          <div class="p-3 mb-4 rounded d-flex justify-content-between align-items-center" ng-show="fileSelected" style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1);">
             <div class="d-flex align-items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00f2fe" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 12px; filter: drop-shadow(0 0 4px rgba(0, 242, 254, 0.3));">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-                <line x1="16" y1="13" x2="8" y2="13"></line>
-                <line x1="16" y1="17" x2="8" y2="17"></line>
-                <polyline points="10 9 9 9 8 9"></polyline>
-              </svg>
+              <div class="stat-icon" style="margin-right: 14px; width: 44px; height: 44px;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00f2fe" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                  <polyline points="10 9 9 9 8 9"></polyline>
+                </svg>
+              </div>
               <div>
-                <div class="text-white font-weight-bold text-truncate" style="max-width: 280px;">{{ fileName }}</div>
-                <div class="text-muted small">{{ (fileSelected.size / 1024) | number:1 }} KB</div>
+                <div class="text-white font-weight-bold text-truncate" style="max-width: 480px; font-size: 15px;">{{ fileName }}</div>
+                <div class="text-muted small">{{ (fileSelected.size / 1024) | number:1 }} KB &bull; {{ sheetNames.length || 1 }} Sheet(s) detected</div>
               </div>
             </div>
-            <button type="button" class="btn btn-sm btn-glass-danger font-weight-bold py-1 px-3" ng-click="clearFile()" ng-disabled="isProcessing">
-              Clear
+            <button type="button" class="btn btn-sm btn-glass-danger font-weight-bold py-2 px-3" ng-click="clearFile()" ng-disabled="isProcessing">
+              Remove File
             </button>
           </div>
 
           <!-- Spinner and Loading -->
           <div class="spinner-container" ng-if="isProcessing">
             <div class="glow-spinner"></div>
-            <p class="text-muted mt-3 mb-0 small">Processing spreadsheet &amp; matching database records...</p>
+            <p class="text-muted mt-3 mb-0 small">Processing spreadsheet &amp; matching records...</p>
           </div>
 
-          <!-- Actions -->
-          <div class="mt-4" ng-show="fileSelected && !isProcessing">
-            <!-- Sheet Selection Checklist -->
+          <!-- Interactive Mapping & Configuration Section -->
+          <div ng-show="fileSelected && !isProcessing">
+            
+            <!-- Flow Banner -->
+            <div class="flow-banner">
+              <div class="flow-step">
+                <span>Input:</span>
+                <strong>{{ selectedInputCol || 'None' }}</strong>
+                <span class="badge badge-pis">{{ selectedKeyType }}</span>
+              </div>
+              <div class="flow-arrow">&rarr;</div>
+              <div class="flow-step">
+                <span>Master Records:</span>
+                <strong style="color: #00ff87;">Matched</strong>
+              </div>
+              <div class="flow-arrow">&rarr;</div>
+              <div class="flow-step">
+                <span>Appending:</span>
+                <strong style="color: #00f2fe;">{{ getSelectedOutputCount() }} Column(s)</strong>
+              </div>
+            </div>
+
+            <!-- Card 1: Column Detection & Mapping -->
+            <div class="mapping-card">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <label class="text-white small font-weight-bold text-uppercase mb-0" style="letter-spacing: 0.5px;">1. Column Identification &amp; Mapping</label>
+                
+                <span class="badge-detected" ng-if="autoDetected">
+                  &#10003; Auto-detected: {{ detectedColumnName }} &rarr; {{ detectedKeyType }}
+                </span>
+                <span class="badge-manual" ng-if="!autoDetected">
+                  &#9888; Manual Mapping
+                </span>
+              </div>
+
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label class="text-muted small d-block mb-1">Column in Your Sheet:</label>
+                  <select class="form-select-glass" ng-model="selectedInputCol">
+                    <option ng-repeat="col in excelColumns" value="{{ col.name }}">
+                      {{ col.name }} (Column {{ col.index }})
+                    </option>
+                  </select>
+                </div>
+
+                <div class="col-md-6 mb-3">
+                  <label class="text-muted small d-block mb-1">Identifier Type:</label>
+                  <select class="form-select-glass" ng-model="selectedKeyType" ng-change="onKeyTypeChange()">
+                    <option ng-repeat="kt in availableKeyTypes" value="{{ kt.id }}">
+                      {{ kt.name }}
+                    </option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card 2: Output Columns Checklist -->
+            <div class="mapping-card">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <label class="text-white small font-weight-bold text-uppercase mb-0" style="letter-spacing: 0.5px;">2. Output Columns to Append to File</label>
+                <span class="text-muted small">{{ getSelectedOutputCount() }} of 4 selected</span>
+              </div>
+
+              <div class="row">
+                <div class="col-xl-3 col-md-6 mb-3" ng-repeat="tc in targetColumns">
+                  <label class="output-checkbox-card" ng-class="{'active': outputCols[tc.id]}">
+                    <input type="checkbox" ng-model="outputCols[tc.id]" />
+                    <div>
+                      <div class="text-white font-weight-bold small">{{ tc.name }}</div>
+                      <div class="text-muted" style="font-size: 11px;">{{ tc.desc }}</div>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card 3: Multi-Sheet Selection (if applicable) -->
             <div class="mb-4 p-3 rounded" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05);" ng-show="sheetNames.length > 1">
-              <label class="text-muted small d-block mb-3 font-weight-bold text-uppercase" style="letter-spacing: 0.5px;">Select Sheets to Process:</label>
+              <label class="text-muted small d-block mb-3 font-weight-bold text-uppercase" style="letter-spacing: 0.5px;">Worksheets to Process:</label>
               <div class="d-flex flex-wrap" style="gap: 20px;">
                 <label ng-repeat="sheet in sheetNames" class="d-flex align-items-center text-white small mb-0" style="cursor: pointer; user-select: none;">
                   <input type="checkbox" ng-model="selectedSheets[sheet]" style="width: 16px; height: 16px; margin-right: 8px; cursor: pointer;" />
@@ -159,65 +323,23 @@
               </div>
             </div>
 
-            <!-- Dynamic Column Selector Checklist -->
-            <div class="mb-4 p-3 rounded" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05);" ng-show="mappableColumns.length > 0">
-              <label class="text-muted small d-block mb-3 font-weight-bold text-uppercase" style="letter-spacing: 0.5px;">Columns to Pull from Database:</label>
-              <div class="d-flex flex-wrap" style="gap: 20px;">
-                <label ng-repeat="col in mappableColumns" class="d-flex align-items-center text-white small mb-0" style="cursor: pointer; user-select: none;">
-                  <input type="checkbox" ng-model="selectedCols[col.dbColumn]" style="width: 16px; height: 16px; margin-right: 8px; cursor: pointer;" />
-                  {{ col.displayName }}
-                </label>
-              </div>
-            </div>
-
+            <!-- Action Button -->
             <button class="btn btn-glass w-100 font-weight-bold text-uppercase py-3" ng-click="processExcelFile()" ng-disabled="isProcessing || dbStatus !== 'online'">
-              Process File &amp; Download Copy
+              Process File &amp; Download Enriched Copy
             </button>
+            
             <p class="text-danger small mt-2 text-center" ng-if="dbStatus !== 'online'">
-              * Please connect to Oracle database to enable processing.
+              * Master records service must be connected to process files.
             </p>
           </div>
 
-          <!-- Schema Guideline Mockup -->
-          <div class="mt-4">
-            <label class="text-muted small">Expected Upload File Column Mapping</label>
-            <div class="preview-table-container">
-              <table class="preview-table">
-                <thead>
-                  <tr>
-                    <th>Serial Number</th>
-                    <th>PIS NO</th>
-                    <th>Name</th>
-                    <th>Rank</th>
-                    <th>Other Columns...</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>1</td>
-                    <td>1001 <span class="badge-pis">Matches PIS</span></td>
-                    <td>John Doe</td>
-                    <td>Manager</td>
-                    <td>...</td>
-                  </tr>
-                  <tr>
-                    <td>2</td>
-                    <td>1002 <span class="badge-pis">Matches PIS</span></td>
-                    <td>Jane Smith</td>
-                    <td>Officer</td>
-                    <td>...</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
         </div>
       </div>
 
     </div>
 
     <!-- Footer -->
-    <div class="text-center text-muted small mt-5">
+    <div class="text-center text-muted small mt-4 mb-2">
     </div>
 
   </div>

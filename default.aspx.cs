@@ -5,11 +5,19 @@ using System.Configuration;
 using System.Web;
 using System.Collections.Generic;
 using System.Web.Script.Serialization;
+using System.Text.RegularExpressions;
 using Oracle.ManagedDataAccess.Client;
 using OfficeOpenXml;
 
 namespace ExcelProcessor
 {
+    public class EmpRecord
+    {
+        public string Pcno { get; set; }
+        public string Pis { get; set; }
+        public string AccNo { get; set; }
+    }
+
     public partial class _default : System.Web.UI.Page
     {
         protected void Page_Load(object sender, EventArgs e)
@@ -27,13 +35,14 @@ namespace ExcelProcessor
 
             try
             {
-                switch (action)
+                switch (action.ToLowerInvariant())
                 {
                     case "status":
                         CheckStatus();
                         break;
                     case "sheets":
-                        GetSheets();
+                    case "inspect":
+                        InspectUploadedFile();
                         break;
                     case "process":
                         ProcessExcel();
@@ -53,34 +62,32 @@ namespace ExcelProcessor
             HttpContext.Current.ApplicationInstance.CompleteRequest();
         }
 
-        private static Dictionary<string, string> GetMappableColumnsConfig()
+        private string GetConfigTableName()
         {
-            var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            string configStr = ConfigurationManager.AppSettings["DatabaseMappableColumns"];
-            if (!string.IsNullOrEmpty(configStr))
+            string tableName = ConfigurationManager.AppSettings["DatabaseTableName"];
+            if (string.IsNullOrWhiteSpace(tableName))
             {
-                string[] parts = configStr.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
-                foreach (string part in parts)
-                {
-                    string[] kv = part.Split(new char[] { ':' }, 2);
-                    if (kv.Length == 2)
-                    {
-                        string dbCol = kv[0].Trim().ToUpper();
-                        string displayName = kv[1].Trim();
-                        if (!string.IsNullOrEmpty(dbCol) && !string.IsNullOrEmpty(displayName))
-                        {
-                            dict[dbCol] = displayName;
-                        }
-                    }
-                }
+                tableName = "V_EMP_DETAILS";
             }
-            if (dict.Count == 0)
-            {
-                dict["ACCOUNT_NUMBER"] = "Account Number";
-                dict["NAME"] = "Name";
-                dict["RANK"] = "Rank";
-            }
-            return dict;
+            return tableName.Trim().ToUpperInvariant();
+        }
+
+        private string GetConfigPcnoColumn()
+        {
+            string col = ConfigurationManager.AppSettings["DatabasePcnoColumn"];
+            return string.IsNullOrWhiteSpace(col) ? "PCNO" : col.Trim().ToUpperInvariant();
+        }
+
+        private string GetConfigPisColumn()
+        {
+            string col = ConfigurationManager.AppSettings["DatabasePisColumn"];
+            return string.IsNullOrWhiteSpace(col) ? "PIS" : col.Trim().ToUpperInvariant();
+        }
+
+        private string GetConfigAccNoColumn()
+        {
+            string col = ConfigurationManager.AppSettings["DatabaseAccNoColumn"];
+            return string.IsNullOrWhiteSpace(col) ? "ACCNO" : col.Trim().ToUpperInvariant();
         }
 
         private void CheckStatus()
@@ -91,12 +98,7 @@ namespace ExcelProcessor
             int recordCount = 0;
             string errorMsg = "";
 
-            string tableName = ConfigurationManager.AppSettings["DatabaseTableName"];
-            if (string.IsNullOrEmpty(tableName))
-            {
-                tableName = "EMPLOYEE";
-            }
-            tableName = tableName.Trim().ToUpper();
+            string tableName = GetConfigTableName();
 
             try
             {
@@ -105,13 +107,23 @@ namespace ExcelProcessor
                     conn.Open();
                     connected = true;
 
-                    // Query USER_TABLES in Oracle to verify existence of table
-                    string checkTableSql = "SELECT COUNT(*) FROM USER_TABLES WHERE TABLE_NAME = :tableName";
-                    using (OracleCommand cmd = new OracleCommand(checkTableSql, conn))
+                    // Check both USER_VIEWS / USER_TABLES and ALL_VIEWS / ALL_TABLES
+                    string checkSql = @"
+                        SELECT COUNT(*) FROM (
+                            SELECT VIEW_NAME AS OBJ_NAME FROM USER_VIEWS WHERE VIEW_NAME = :tName
+                            UNION ALL
+                            SELECT TABLE_NAME AS OBJ_NAME FROM USER_TABLES WHERE TABLE_NAME = :tName
+                            UNION ALL
+                            SELECT VIEW_NAME AS OBJ_NAME FROM ALL_VIEWS WHERE VIEW_NAME = :tName
+                            UNION ALL
+                            SELECT TABLE_NAME AS OBJ_NAME FROM ALL_TABLES WHERE TABLE_NAME = :tName
+                        )";
+
+                    using (OracleCommand cmd = new OracleCommand(checkSql, conn))
                     {
-                        cmd.Parameters.Add(new OracleParameter("tableName", tableName));
-                        int tableCount = Convert.ToInt32(cmd.ExecuteScalar());
-                        tableExists = tableCount > 0;
+                        cmd.Parameters.Add(new OracleParameter("tName", tableName));
+                        int count = Convert.ToInt32(cmd.ExecuteScalar());
+                        tableExists = count > 0;
                     }
 
                     if (tableExists)
@@ -129,19 +141,21 @@ namespace ExcelProcessor
                 errorMsg = ex.Message;
             }
 
-            var mappableColsList = new List<object>();
-            var configCols = GetMappableColumnsConfig();
-            foreach (var kvp in configCols)
+            var supportedKeys = new List<object>
             {
-                mappableColsList.Add(new { dbColumn = kvp.Key, displayName = kvp.Value });
-            }
+                new { id = "PCNO", name = "PC Number (PCNO)", description = "Employee Cadre / PC Number" },
+                new { id = "PIS", name = "PIS Number (PIS)", description = "Personnel Information System Number" },
+                new { id = "ACCNO", name = "Account Number (ACCNO)", description = "Account Number (GPF / PRAN)" },
+                new { id = "GPFPRAN", name = "GPF / PRAN (GPFPRAN)", description = "GPF / PRAN Account Number" }
+            };
 
             var result = new
             {
                 connected = connected,
                 tableExists = tableExists,
+                tableName = tableName,
                 recordCount = recordCount,
-                mappableColumns = mappableColsList,
+                supportedKeys = supportedKeys,
                 error = errorMsg
             };
 
@@ -149,7 +163,7 @@ namespace ExcelProcessor
             Response.Write(serializer.Serialize(result));
         }
 
-        private void GetSheets()
+        private void InspectUploadedFile()
         {
             if (Request.Files.Count == 0)
             {
@@ -166,24 +180,105 @@ namespace ExcelProcessor
 
             try
             {
-                using (ExcelPackage package = new ExcelPackage(file.InputStream))
-                {
-                    List<string> sheetNames = new List<string>();
-                    foreach (ExcelWorksheet ws in package.Workbook.Worksheets)
-                    {
-                        sheetNames.Add(ws.Name);
-                    }
+                List<string> sheetNames = new List<string>();
+                List<object> columns = new List<object>();
+                string detectedColumn = null;
+                string detectedKeyType = null;
 
-                    var serializer = new JavaScriptSerializer();
-                    Response.Write(serializer.Serialize(new { success = true, sheets = sheetNames }));
+                if (file.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+                {
+                    sheetNames.Add("Default");
+                    List<List<string>> csvRows = ParseCsv(file.InputStream);
+                    if (csvRows.Count > 0)
+                    {
+                        int headerRowIdx = FindHeaderRowCsv(csvRows);
+                        var headerRow = csvRows[headerRowIdx];
+                        for (int i = 0; i < headerRow.Count; i++)
+                        {
+                            string colName = headerRow[i];
+                            if (string.IsNullOrWhiteSpace(colName)) continue;
+                            string dType = DetectKeyType(colName);
+                            columns.Add(new { index = i + 1, name = colName, detectedType = dType });
+                            if (detectedKeyType == null && dType != null)
+                            {
+                                detectedColumn = colName;
+                                detectedKeyType = dType;
+                            }
+                        }
+                    }
                 }
+                else
+                {
+                    using (ExcelPackage package = new ExcelPackage(file.InputStream))
+                    {
+                        foreach (ExcelWorksheet ws in package.Workbook.Worksheets)
+                        {
+                            sheetNames.Add(ws.Name);
+                        }
+
+                        if (package.Workbook.Worksheets.Count > 0)
+                        {
+                            ExcelWorksheet ws = package.Workbook.Worksheets[1]; // 1-based index in EPPlus
+                            var dim = ws.Dimension;
+                            if (dim != null)
+                            {
+                                int rCount = dim.End.Row;
+                                int cCount = dim.End.Column;
+                                int maxScan = Math.Min(rCount, 25);
+                                int headerRow = 1;
+
+                                // Look for first row that contains at least one recognized key or non-empty cells
+                                for (int r = 1; r <= maxScan; r++)
+                                {
+                                    bool hasAnyRecognized = false;
+                                    for (int c = 1; c <= cCount; c++)
+                                    {
+                                        string text = ws.Cells[r, c].Text;
+                                        if (DetectKeyType(text) != null)
+                                        {
+                                            hasAnyRecognized = true;
+                                            break;
+                                        }
+                                    }
+                                    if (hasAnyRecognized)
+                                    {
+                                        headerRow = r;
+                                        break;
+                                    }
+                                }
+
+                                for (int c = 1; c <= cCount; c++)
+                                {
+                                    string colName = ws.Cells[headerRow, c].Text;
+                                    if (string.IsNullOrWhiteSpace(colName)) continue;
+                                    string dType = DetectKeyType(colName);
+                                    columns.Add(new { index = c, name = colName, detectedType = dType });
+                                    if (detectedKeyType == null && dType != null)
+                                    {
+                                        detectedColumn = colName;
+                                        detectedKeyType = dType;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                var serializer = new JavaScriptSerializer();
+                Response.Write(serializer.Serialize(new
+                {
+                    success = true,
+                    sheets = sheetNames,
+                    columns = columns,
+                    detectedColumn = detectedColumn,
+                    detectedKeyType = detectedKeyType
+                }));
             }
             catch (Exception ex)
             {
-                ReturnError("Failed to parse sheet names: " + ex.Message);
+                ReturnError("Failed to inspect file: " + ex.Message);
             }
         }
-
 
         private void ProcessExcel()
         {
@@ -200,95 +295,63 @@ namespace ExcelProcessor
                 return;
             }
 
-            string tableName = ConfigurationManager.AppSettings["DatabaseTableName"];
-            if (string.IsNullOrEmpty(tableName))
+            // Input Column & Key Type
+            string inputColName = Request.Form["inputCol"];
+            string keyType = Request.Form["keyType"]; // "PCNO", "PIS", "ACCNO", "GPFPRAN"
+
+            if (string.IsNullOrWhiteSpace(keyType))
             {
-                tableName = "EMPLOYEE";
+                ReturnError("Identifier key type is required (PCNO, PIS, ACCNO, or GPFPRAN).");
+                return;
             }
-            tableName = tableName.Trim().ToUpper();
+            keyType = keyType.Trim().ToUpperInvariant();
 
-            string pkColumn = ConfigurationManager.AppSettings["DatabasePrimaryKeyColumn"];
-            if (string.IsNullOrEmpty(pkColumn))
+            // Output columns to append
+            string outputColsParam = Request.Form["outputCols"];
+            if (string.IsNullOrWhiteSpace(outputColsParam))
             {
-                pkColumn = "PIS";
-            }
-            pkColumn = pkColumn.Trim().ToUpper();
-
-            // Retrieve column choices from request
-            string columnsToInject = Request.Form["columns"];
-            if (string.IsNullOrEmpty(columnsToInject))
-            {
-                columnsToInject = "ACCOUNT_NUMBER"; // Fallback to account number
+                // Fallback: pick standard complementary output columns
+                if (keyType == "PIS") outputColsParam = "PCNO,ACCNO";
+                else if (keyType == "PCNO") outputColsParam = "PIS,ACCNO";
+                else outputColsParam = "PCNO,PIS";
             }
 
-            string[] selectedCols = columnsToInject.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
-            var allowedColumnsMap = GetMappableColumnsConfig();
-            List<string> allowedColumns = new List<string>(allowedColumnsMap.Keys);
-            List<string> colsToQuery = new List<string>();
-
-            foreach (string col in selectedCols)
+            string[] outputColsRaw = outputColsParam.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+            List<string> outputCols = new List<string>();
+            foreach (string oc in outputColsRaw)
             {
-                string upperCol = col.Trim().ToUpper();
-                if (allowedColumns.Contains(upperCol) && !colsToQuery.Contains(upperCol))
+                string norm = oc.Trim().ToUpperInvariant();
+                if ((norm == "PCNO" || norm == "PIS" || norm == "ACCNO" || norm == "GPFPRAN") && !outputCols.Contains(norm))
                 {
-                    colsToQuery.Add(upperCol);
+                    outputCols.Add(norm);
                 }
             }
 
-            if (colsToQuery.Count == 0)
+            if (outputCols.Count == 0)
             {
-                colsToQuery.Add("ACCOUNT_NUMBER");
+                ReturnError("Please select at least one output column to append.");
+                return;
             }
 
-            string connStr = ConfigurationManager.ConnectionStrings["OracleConn"].ConnectionString;
-            
-            // Nested mapping: employeeData[pis_number][column_name] = value
-            Dictionary<string, Dictionary<string, string>> employeeData = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+            // Load data from Oracle View into memory
+            Dictionary<string, EmpRecord> byPcno;
+            Dictionary<string, EmpRecord> byPis;
+            Dictionary<string, EmpRecord> byAccNo;
 
-            try
+            string loadError = LoadViewData(out byPcno, out byPis, out byAccNo);
+            if (!string.IsNullOrEmpty(loadError))
             {
-                // Fetch dynamic columns in a single query safely
-                using (OracleConnection conn = new OracleConnection(connStr))
-                {
-                    conn.Open();
-                    string fetchSql = string.Format("SELECT {0}, {1} FROM {2}", pkColumn, string.Join(", ", colsToQuery), tableName);
-                    using (OracleCommand cmd = new OracleCommand(fetchSql, conn))
-                    using (OracleDataReader reader = cmd.ExecuteReader())
-                    {
-                        while (reader.Read())
-                        {
-                            string pisVal = CleanPisValue(reader[pkColumn].ToString());
-                            if (!string.IsNullOrEmpty(pisVal))
-                            {
-                                var rowMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                                foreach (string col in colsToQuery)
-                                {
-                                    object valObj = reader[col];
-                                    string valStr = "";
-                                    if (valObj != null && valObj != DBNull.Value)
-                                    {
-                                        valStr = valObj.ToString().Trim();
-                                    }
-                                    rowMap[col] = valStr;
-                                }
-                                employeeData[pisVal] = rowMap;
-                            }
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                ReturnError("Database Error: " + ex.Message);
+                ReturnError("Records Error: " + loadError);
                 return;
             }
 
             if (file.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
             {
-                ProcessCsvFile(file, colsToQuery, employeeData, allowedColumnsMap, pkColumn);
+                ProcessCsvFile(file, inputColName, keyType, outputCols, byPcno, byPis, byAccNo);
                 return;
             }
 
+            // Worksheets to process
             string selectedSheetsParam = Request.Form["sheets"];
             List<string> selectedSheetsList = new List<string>();
             if (!string.IsNullOrEmpty(selectedSheetsParam))
@@ -306,7 +369,6 @@ namespace ExcelProcessor
 
             try
             {
-                // Process the Excel spreadsheet in memory using EPPlus
                 using (ExcelPackage package = new ExcelPackage(file.InputStream))
                 {
                     if (package.Workbook.Worksheets.Count == 0)
@@ -317,10 +379,8 @@ namespace ExcelProcessor
 
                     bool processedAny = false;
 
-                    // Scan all worksheets in the workbook to process selected sheets
                     foreach (ExcelWorksheet ws in package.Workbook.Worksheets)
                     {
-                        // Filter by sheet name if list is provided
                         if (selectedSheetsList.Count > 0 && !selectedSheetsList.Contains(ws.Name))
                         {
                             continue;
@@ -340,94 +400,86 @@ namespace ExcelProcessor
                         int rCount = dimension.End.Row;
                         int cCount = dimension.End.Column;
                         int maxHeaderScanRows = Math.Min(rCount, 25);
-                        int pisColIndex = -1;
+                        int inputColIndex = -1;
                         int headerRowIndex = -1;
 
+                        // 1. Locate the header row and input column
                         for (int r = 1; r <= maxHeaderScanRows; r++)
                         {
                             for (int c = 1; c <= cCount; c++)
                             {
                                 string cellText = ws.Cells[r, c].Text;
-                                if (IsPisHeader(cellText, pkColumn))
+                                if (IsMatchingInputColumn(cellText, inputColName, keyType))
                                 {
-                                    pisColIndex = c;
+                                    inputColIndex = c;
                                     headerRowIndex = r;
                                     break;
                                 }
                             }
-                            if (pisColIndex != -1)
-                            {
-                                break;
-                            }
+                            if (inputColIndex != -1) break;
                         }
 
-                        if (pisColIndex == -1)
+                        if (inputColIndex == -1)
                         {
-                            if (selectedSheetsList.Contains(ws.Name))
+                            // If user specified an explicit column name or index, try fallback
+                            int parsedCol;
+                            if (int.TryParse(inputColName, out parsedCol) && parsedCol >= 1 && parsedCol <= cCount)
                             {
-                                ReturnError(string.Format("Selected sheet '{0}' does not contain a PIS column.", ws.Name));
+                                inputColIndex = parsedCol;
+                                headerRowIndex = 1;
+                            }
+                            else if (selectedSheetsList.Contains(ws.Name))
+                            {
+                                ReturnError(string.Format("Selected sheet '{0}' does not contain column '{1}' or key type '{2}'.", ws.Name, inputColName ?? keyType, keyType));
                                 return;
                             }
-                            continue;
+                            else
+                            {
+                                continue;
+                            }
                         }
 
                         processedAny = true;
 
-                        // Map column headers to append
+                        // 2. Append chosen output column headers
                         Dictionary<string, int> targetColIndexes = new Dictionary<string, int>();
                         int currentColCount = cCount;
-                        foreach (string col in colsToQuery)
+                        foreach (string outCol in outputCols)
                         {
                             currentColCount++;
-                            targetColIndexes[col] = currentColCount;
-
-                            string displayName;
-                            if (!allowedColumnsMap.TryGetValue(col, out displayName))
-                            {
-                                displayName = col;
-                            }
-
-                            ws.Cells[headerRowIndex, currentColCount].Value = displayName;
+                            targetColIndexes[outCol] = currentColCount;
+                            ws.Cells[headerRowIndex, currentColCount].Value = GetOutputColumnHeaderTitle(outCol);
                         }
-                        
-                        // Match cells by PIS values, starting directly after the header row
+
+                        // 3. Process each row
                         for (int r = headerRowIndex + 1; r <= rCount; r++)
                         {
-                            string pis = ws.Cells[r, pisColIndex].Text;
-                            if (pis != null)
+                            string rawVal = ws.Cells[r, inputColIndex].Text;
+                            string cleanedVal = CleanValue(rawVal);
+
+                            if (string.IsNullOrEmpty(cleanedVal))
                             {
-                                pis = CleanPisValue(pis);
-                                if (!string.IsNullOrEmpty(pis))
-                                {
-                                    Dictionary<string, string> record;
-                                    if (employeeData.TryGetValue(pis, out record))
-                                    {
-                                        foreach (string col in colsToQuery)
-                                        {
-                                            int targetCol = targetColIndexes[col];
-                                            ws.Cells[r, targetCol].Value = record[col];
-                                        }
-                                    }
-                                    else
-                                    {
-                                        foreach (string col in colsToQuery)
-                                        {
-                                            int targetCol = targetColIndexes[col];
-                                            ws.Cells[r, targetCol].Value = "Not Found";
-                                        }
-                                    }
-                                }
+                                // Leave empty
+                                continue;
+                            }
+
+                            EmpRecord matchedRecord = LookupRecord(cleanedVal, keyType, byPcno, byPis, byAccNo);
+
+                            foreach (string outCol in outputCols)
+                            {
+                                int targetCol = targetColIndexes[outCol];
+                                string valToInsert = GetRecordValue(matchedRecord, outCol);
+                                ws.Cells[r, targetCol].Value = valToInsert;
                             }
                         }
                     }
 
                     if (!processedAny)
                     {
-                        ReturnError("No valid worksheets containing a PIS column were processed.");
+                        ReturnError("No valid worksheets were processed.");
                         return;
                     }
 
-                    // Output modified spreadsheet directly to browser response stream
                     byte[] fileBytes;
                     using (MemoryStream ms = new MemoryStream())
                     {
@@ -450,66 +502,8 @@ namespace ExcelProcessor
             }
         }
 
-        private void ReturnError(string message)
-        {
-            Response.Clear();
-            Response.ContentType = "application/json";
-            Response.StatusCode = 200; // Allow client to read structured JSON
-            var serializer = new JavaScriptSerializer();
-            Response.Write(serializer.Serialize(new { error = message }));
-        }
-
-        private static bool IsPisHeader(string text, string pkColumn)
-        {
-            if (string.IsNullOrEmpty(text)) return false;
-            
-            string normalized = text.Replace('\u00A0', ' ');
-            normalized = normalized.Replace('\r', ' ').Replace('\n', ' ').Replace('\t', ' ');
-            while (normalized.Contains("  "))
-            {
-                normalized = normalized.Replace("  ", " ");
-            }
-            
-            normalized = normalized.Trim().ToUpper();
-            
-            if (normalized == "PIS" || 
-                normalized == "PIS NO" || 
-                normalized == "PIS NO." || 
-                normalized == "PIS_NO" || 
-                normalized == "PISNUMBER" || 
-                normalized == "PIS NUMBER" || 
-                normalized == "PIS_NUMBER" || 
-                normalized == "PISNUM" || 
-                normalized == "PIS_NUM")
-            {
-                return true;
-            }
-            
-            if (!string.IsNullOrEmpty(pkColumn))
-            {
-                string pkNormalized = pkColumn.Trim().ToUpper();
-                if (normalized == pkNormalized)
-                {
-                    return true;
-                }
-            }
-            
-            return false;
-        }
-
-        private static string CleanPisValue(string text)
-        {
-            if (string.IsNullOrEmpty(text)) return "";
-            string cleaned = text.Replace('\u00A0', ' ');
-            cleaned = cleaned.Replace('\r', ' ').Replace('\n', ' ').Replace('\t', ' ');
-            while (cleaned.Contains("  "))
-            {
-                cleaned = cleaned.Replace("  ", " ");
-            }
-            return cleaned.Trim();
-        }
-
-        private void ProcessCsvFile(HttpPostedFile file, List<string> colsToQuery, Dictionary<string, Dictionary<string, string>> employeeData, Dictionary<string, string> allowedColumnsMap, string pkColumn)
+        private void ProcessCsvFile(HttpPostedFile file, string inputColName, string keyType, List<string> outputCols,
+            Dictionary<string, EmpRecord> byPcno, Dictionary<string, EmpRecord> byPis, Dictionary<string, EmpRecord> byAccNo)
         {
             try
             {
@@ -520,7 +514,7 @@ namespace ExcelProcessor
                     return;
                 }
 
-                int pisColIndex = -1;
+                int inputColIndex = -1;
                 int headerRowIndex = -1;
                 int rowCount = csvRows.Count;
                 int colCount = 0;
@@ -532,36 +526,29 @@ namespace ExcelProcessor
                     for (int c = 0; c < row.Count; c++)
                     {
                         string cellText = row[c];
-                        if (IsPisHeader(cellText, pkColumn))
+                        if (IsMatchingInputColumn(cellText, inputColName, keyType))
                         {
-                            pisColIndex = c;
+                            inputColIndex = c;
                             headerRowIndex = r;
                             colCount = row.Count;
                             break;
                         }
                     }
-                    if (pisColIndex != -1) break;
+                    if (inputColIndex != -1) break;
                 }
 
-                if (pisColIndex == -1)
+                if (inputColIndex == -1)
                 {
-                    ReturnError("Could not find a 'PIS' or 'PIS NO' column in the uploaded CSV file.");
+                    ReturnError(string.Format("Could not find identifier column '{0}' in the uploaded CSV file.", inputColName ?? keyType));
                     return;
                 }
 
-                // Map column headers to append
                 var headerRow = csvRows[headerRowIndex];
-                foreach (string col in colsToQuery)
+                foreach (string outCol in outputCols)
                 {
-                    string displayName;
-                    if (!allowedColumnsMap.TryGetValue(col, out displayName))
-                    {
-                        displayName = col;
-                    }
-                    headerRow.Add(displayName);
+                    headerRow.Add(GetOutputColumnHeaderTitle(outCol));
                 }
-                
-                // Match and append values
+
                 for (int r = headerRowIndex + 1; r < rowCount; r++)
                 {
                     var row = csvRows[r];
@@ -570,23 +557,17 @@ namespace ExcelProcessor
                         row.Add("");
                     }
 
-                    string pisVal = "";
-                    if (pisColIndex < row.Count)
-                    {
-                        pisVal = CleanPisValue(row[pisColIndex]);
-                    }
+                    string rawVal = (inputColIndex < row.Count) ? row[inputColIndex] : "";
+                    string cleanedVal = CleanValue(rawVal);
 
-                    Dictionary<string, string> record = null;
-                    bool hasRecord = false;
-                    if (!string.IsNullOrEmpty(pisVal))
-                    {
-                        hasRecord = employeeData.TryGetValue(pisVal, out record);
-                    }
+                    EmpRecord matchedRecord = string.IsNullOrEmpty(cleanedVal)
+                        ? null
+                        : LookupRecord(cleanedVal, keyType, byPcno, byPis, byAccNo);
 
-                    foreach (string col in colsToQuery)
+                    foreach (string outCol in outputCols)
                     {
-                        string val = hasRecord ? record[col] : "Not Found";
-                        row.Add(val);
+                        string valToInsert = string.IsNullOrEmpty(cleanedVal) ? "" : GetRecordValue(matchedRecord, outCol);
+                        row.Add(valToInsert);
                     }
                 }
 
@@ -604,6 +585,281 @@ namespace ExcelProcessor
             {
                 ReturnError("CSV Processing Error: " + ex.Message);
             }
+        }
+
+        private string LoadViewData(out Dictionary<string, EmpRecord> byPcno, out Dictionary<string, EmpRecord> byPis, out Dictionary<string, EmpRecord> byAccNo)
+        {
+            byPcno = new Dictionary<string, EmpRecord>(StringComparer.OrdinalIgnoreCase);
+            byPis = new Dictionary<string, EmpRecord>(StringComparer.OrdinalIgnoreCase);
+            byAccNo = new Dictionary<string, EmpRecord>(StringComparer.OrdinalIgnoreCase);
+
+            string tableName = GetConfigTableName();
+            string pcnoCol = GetConfigPcnoColumn();
+            string pisCol = GetConfigPisColumn();
+            string accnoCol = GetConfigAccNoColumn();
+
+            string connStr = ConfigurationManager.ConnectionStrings["OracleConn"].ConnectionString;
+
+            try
+            {
+                using (OracleConnection conn = new OracleConnection(connStr))
+                {
+                    conn.Open();
+                    string query = string.Format("SELECT {0}, {1}, {2} FROM {3}", pcnoCol, pisCol, accnoCol, tableName);
+
+                    using (OracleCommand cmd = new OracleCommand(query, conn))
+                    using (OracleDataReader reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            string pcno = CleanValue(reader[pcnoCol] != DBNull.Value ? reader[pcnoCol].ToString() : "");
+                            string pis = CleanValue(reader[pisCol] != DBNull.Value ? reader[pisCol].ToString() : "");
+                            string accno = CleanValue(reader[accnoCol] != DBNull.Value ? reader[accnoCol].ToString() : "");
+
+                            var record = new EmpRecord
+                            {
+                                Pcno = pcno,
+                                Pis = pis,
+                                AccNo = accno
+                            };
+
+                            // Map by PCNO
+                            if (!string.IsNullOrEmpty(pcno))
+                            {
+                                if (!byPcno.ContainsKey(pcno))
+                                {
+                                    byPcno[pcno] = record;
+                                }
+                            }
+
+                            // Map by PIS (Apply MAX(PCNO) rule: if a PIS has multiple PCNOs, pick the MAX PCNO)
+                            if (!string.IsNullOrEmpty(pis))
+                            {
+                                EmpRecord existing;
+                                if (byPis.TryGetValue(pis, out existing))
+                                {
+                                    if (ComparePcno(record.Pcno, existing.Pcno) > 0)
+                                    {
+                                        byPis[pis] = record;
+                                    }
+                                }
+                                else
+                                {
+                                    byPis[pis] = record;
+                                }
+                            }
+
+                            // Map by ACCNO (or GPFPRAN)
+                            if (!string.IsNullOrEmpty(accno))
+                            {
+                                EmpRecord existing;
+                                if (byAccNo.TryGetValue(accno, out existing))
+                                {
+                                    if (ComparePcno(record.Pcno, existing.Pcno) > 0)
+                                    {
+                                        byAccNo[accno] = record;
+                                    }
+                                }
+                                else
+                                {
+                                    byAccNo[accno] = record;
+                                }
+                            }
+                        }
+                    }
+                }
+                return null;
+            }
+            catch (Exception ex)
+            {
+                return ex.Message;
+            }
+        }
+
+        private static EmpRecord LookupRecord(string cleanedVal, string keyType,
+            Dictionary<string, EmpRecord> byPcno, Dictionary<string, EmpRecord> byPis, Dictionary<string, EmpRecord> byAccNo)
+        {
+            if (string.IsNullOrEmpty(cleanedVal)) return null;
+
+            EmpRecord record = null;
+            switch (keyType)
+            {
+                case "PCNO":
+                    byPcno.TryGetValue(cleanedVal, out record);
+                    break;
+                case "PIS":
+                    byPis.TryGetValue(cleanedVal, out record);
+                    break;
+                case "ACCNO":
+                case "GPFPRAN":
+                    byAccNo.TryGetValue(cleanedVal, out record);
+                    break;
+            }
+            return record;
+        }
+
+        private static string GetRecordValue(EmpRecord record, string targetCol)
+        {
+            if (record == null) return "Not Found";
+
+            string val = "";
+            switch (targetCol)
+            {
+                case "PCNO":
+                    val = record.Pcno;
+                    break;
+                case "PIS":
+                    val = record.Pis;
+                    break;
+                case "ACCNO":
+                case "GPFPRAN":
+                    val = record.AccNo;
+                    break;
+            }
+
+            return string.IsNullOrEmpty(val) ? "Not Found" : val;
+        }
+
+        private static string GetOutputColumnHeaderTitle(string colKey)
+        {
+            switch (colKey)
+            {
+                case "PCNO": return "PCNO";
+                case "PIS": return "PIS";
+                case "ACCNO": return "ACCNO";
+                case "GPFPRAN": return "GPFPRAN";
+                default: return colKey;
+            }
+        }
+
+        private static int ComparePcno(string a, string b)
+        {
+            if (string.Equals(a, b, StringComparison.OrdinalIgnoreCase)) return 0;
+            if (string.IsNullOrEmpty(a)) return -1;
+            if (string.IsNullOrEmpty(b)) return 1;
+
+            long numA, numB;
+            if (long.TryParse(a.Trim(), out numA) && long.TryParse(b.Trim(), out numB))
+            {
+                return numA.CompareTo(numB);
+            }
+
+            var matchA = Regex.Match(a, @"\d+");
+            var matchB = Regex.Match(b, @"\d+");
+            if (matchA.Success && matchB.Success && long.TryParse(matchA.Value, out numA) && long.TryParse(matchB.Value, out numB))
+            {
+                int cmp = numA.CompareTo(numB);
+                if (cmp != 0) return cmp;
+            }
+
+            return string.Compare(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static string DetectKeyType(string headerName)
+        {
+            if (string.IsNullOrWhiteSpace(headerName)) return null;
+
+            string norm = NormalizeHeader(headerName);
+
+            // Check GPF / PRAN first
+            if (norm == "GPFPRAN" || norm == "GPF_PRAN" || norm == "GPF/PRAN" || norm == "GPF PRAN" ||
+                norm == "GPF" || norm == "PRAN" || norm == "GPFNO" || norm == "PRANNO" ||
+                norm == "GPF NO" || norm == "PRAN NO" || norm == "GPF_NO" || norm == "PRAN_NO")
+            {
+                return "GPFPRAN";
+            }
+
+            // Check ACCNO
+            if (norm == "ACCNO" || norm == "ACC NO" || norm == "ACC_NO" || norm == "ACC NO." ||
+                norm == "ACCOUNT" || norm == "ACCOUNTNO" || norm == "ACCOUNT NO" || norm == "ACCOUNT_NO" ||
+                norm == "ACCOUNTNUMBER" || norm == "ACCOUNT_NUMBER" || norm == "ACCOUNT NUMBER" ||
+                norm == "ACNO" || norm == "AC NO" || norm == "AC_NO" || norm == "A/C NO" || norm == "A/C NUMBER")
+            {
+                return "ACCNO";
+            }
+
+            // Check PIS
+            if (norm == "PIS" || norm == "PISNO" || norm == "PIS NO" || norm == "PIS NO." || 
+                norm == "PIS_NO" || norm == "PISNUMBER" || norm == "PIS NUMBER" || norm == "PIS_NUMBER" || 
+                norm == "PISNUM" || norm == "PIS_NUM")
+            {
+                return "PIS";
+            }
+
+            // Check PCNO
+            if (norm == "PCNO" || norm == "PC NO" || norm == "PC NO." || norm == "PC_NO" || 
+                norm == "PCNUMBER" || norm == "PC NUMBER" || norm == "PC_NUMBER" || 
+                norm == "PCNUM" || norm == "PC_NUM")
+            {
+                return "PCNO";
+            }
+
+            return null;
+        }
+
+        private static bool IsMatchingInputColumn(string cellText, string specifiedColName, string keyType)
+        {
+            if (string.IsNullOrWhiteSpace(cellText)) return false;
+
+            string normCell = NormalizeHeader(cellText);
+
+            // If user explicitly specified an input column name from dropdown
+            if (!string.IsNullOrWhiteSpace(specifiedColName))
+            {
+                string normSpecified = NormalizeHeader(specifiedColName);
+                if (normCell == normSpecified) return true;
+            }
+
+            // Otherwise, check if it matches the keyType
+            string detected = DetectKeyType(cellText);
+            if (detected != null)
+            {
+                if (string.Equals(detected, keyType, StringComparison.OrdinalIgnoreCase)) return true;
+                if ((keyType == "ACCNO" || keyType == "GPFPRAN") && (detected == "ACCNO" || detected == "GPFPRAN")) return true;
+            }
+
+            return false;
+        }
+
+        private static string NormalizeHeader(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return "";
+            string cleaned = text.Replace('\u00A0', ' ')
+                                 .Replace('\r', ' ')
+                                 .Replace('\n', ' ')
+                                 .Replace('\t', ' ');
+            while (cleaned.Contains("  "))
+            {
+                cleaned = cleaned.Replace("  ", " ");
+            }
+            return cleaned.Trim().ToUpperInvariant();
+        }
+
+        private static string CleanValue(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return "";
+            string cleaned = text.Replace('\u00A0', ' ')
+                                 .Replace('\r', ' ')
+                                 .Replace('\n', ' ')
+                                 .Replace('\t', ' ');
+            while (cleaned.Contains("  "))
+            {
+                cleaned = cleaned.Replace("  ", " ");
+            }
+            return cleaned.Trim();
+        }
+
+        private static int FindHeaderRowCsv(List<List<string>> rows)
+        {
+            int maxScan = Math.Min(rows.Count, 25);
+            for (int r = 0; r < maxScan; r++)
+            {
+                foreach (string cell in rows[r])
+                {
+                    if (DetectKeyType(cell) != null) return r;
+                }
+            }
+            return 0;
         }
 
         private static List<List<string>> ParseCsv(Stream stream)
@@ -625,14 +881,14 @@ namespace ExcelProcessor
                         if (c == '"')
                         {
                             int nextCh = reader.Peek();
-                            if (nextCh == '"') // Escaped quote
+                            if (nextCh == '"')
                             {
                                 currentField.Append('"');
-                                reader.Read(); // Consume the second quote
+                                reader.Read();
                             }
                             else
                             {
-                                inQuotes = false; // End of quoted field
+                                inQuotes = false;
                             }
                         }
                         else
@@ -715,6 +971,15 @@ namespace ExcelProcessor
                 writer.Flush();
                 return ms.ToArray();
             }
+        }
+
+        private void ReturnError(string message)
+        {
+            Response.Clear();
+            Response.ContentType = "application/json";
+            Response.StatusCode = 200;
+            var serializer = new JavaScriptSerializer();
+            Response.Write(serializer.Serialize(new { error = message }));
         }
     }
 }
