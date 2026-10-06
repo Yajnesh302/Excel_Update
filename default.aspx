@@ -20,7 +20,7 @@
     <header class="top-navbar">
       <div class="brand-wrapper">
         <div class="brand-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#00f2fe" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
             <polyline points="14 2 14 8 20 8"></polyline>
             <line x1="16" y1="13" x2="8" y2="13"></line>
@@ -59,8 +59,8 @@
         </div>
         <div class="stat-content">
           <span class="stat-label">Master Service</span>
-          <span class="stat-value" ng-if="dbStatus === 'online'" style="color: #00ff87;">Connected (Online)</span>
-          <span class="stat-value" ng-if="dbStatus !== 'online'" style="color: #ff3366;">Disconnected</span>
+          <span class="stat-value" ng-if="dbStatus === 'online'" style="color: #059669;">Connected (Online)</span>
+          <span class="stat-value" ng-if="dbStatus !== 'online'" style="color: #e11d48;">Disconnected</span>
         </div>
       </div>
 
@@ -102,26 +102,26 @@
         
         <!-- How It Works Panel -->
         <div class="glass-panel mb-4">
-          <h5 class="text-white font-weight-bold mb-3" style="font-size: 16px;">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" stroke="#00f2fe" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px; vertical-align: -3px;">
+          <h5 class="panel-heading mb-3 d-flex align-items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
               <circle cx="12" cy="12" r="10"></circle>
               <line x1="12" y1="16" x2="12" y2="12"></line>
               <line x1="12" y1="8" x2="12.01" y2="8"></line>
             </svg>
             System Overview &amp; Features
           </h5>
-          <ul class="text-muted small mb-0 pl-3" style="line-height: 1.8; list-style-type: disc;">
-            <li class="mb-2"><strong>Smart Auto-Detection:</strong> Uploaded spreadsheets are automatically scanned to detect <code>GPFPRAN</code>, <code>PIS</code>, <code>PCNO</code>, or Bank Account (<code>ACCNO</code>) headers.</li>
-            <li class="mb-2"><strong>Custom Mapping:</strong> If your sheet uses unique column headers, simply choose the matching identifier column from the dropdown.</li>
-            <li class="mb-2"><strong>Customizable Columns:</strong> Select any combination of employee fields to append directly to your downloaded spreadsheet.</li>
+          <ul class="feature-list mb-0 pl-3">
+            <li><strong>Smart Auto-Detection:</strong> Uploaded spreadsheets are automatically scanned to detect <code>GPFPRAN</code>, <code>PIS</code>, <code>PCNO</code>, or Bank Account (<code>ACCNO</code>) headers.</li>
+            <li><strong>Custom Mapping:</strong> If your sheet uses unique column headers, simply choose the matching identifier column from the dropdown.</li>
+            <li><strong>Customizable Columns:</strong> Select any combination of employee fields to append directly to your downloaded spreadsheet.</li>
             <li><strong>Supported Formats:</strong> Works seamlessly with <strong>.xlsx</strong>, <strong>.xls</strong>, and <strong>.csv</strong> files.</li>
           </ul>
         </div>
 
-        <!-- Demonstration Preview Table Panel (Balances height of left column) -->
+        <!-- Demonstration Preview Table Panel -->
         <div class="glass-panel">
-          <h5 class="text-white font-weight-bold mb-2" style="font-size: 16px;">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" stroke="#00ff87" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px; vertical-align: -3px;">
+          <h5 class="panel-heading mb-2 d-flex align-items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
               <polyline points="9 11 12 14 22 4"></polyline>
               <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
             </svg>
@@ -134,10 +134,10 @@
               <thead>
                 <tr>
                   <th>Input Key</th>
-                  <th style="color: #00f2fe;">+ PCNO</th>
-                  <th style="color: #00ff87;">+ PIS</th>
-                  <th style="color: #ffb142;">+ GPFPRAN</th>
-                  <th style="color: #4facfe;">+ Bank A/C (ACCNO)</th>
+                  <th style="color: #2563eb;">+ PCNO</th>
+                  <th style="color: #059669;">+ PIS</th>
+                  <th style="color: #d97706;">+ GPFPRAN</th>
+                  <th style="color: #7c3aed;">+ Bank A/C (ACCNO)</th>
                 </tr>
               </thead>
               <tbody>
@@ -182,42 +182,42 @@
           
           <div class="d-flex justify-content-between align-items-center mb-3">
             <div>
-              <h4 class="mb-1 text-white font-weight-bold">Spreadsheet Processing Studio</h4>
+              <h4 class="mb-1 panel-heading">Spreadsheet Processing Studio</h4>
               <p class="text-muted small mb-0">Upload any spreadsheet to automatically match records and download an enriched copy.</p>
             </div>
           </div>
 
           <!-- Alert Notifications -->
-          <div class="alert alert-danger" ng-if="errorMsg" role="alert" style="border-radius: 8px; background: rgba(255, 8, 68, 0.15); border-color: rgba(255, 8, 68, 0.3); color: #ffccd5; margin-bottom: 20px;">
+          <div class="custom-alert-danger" ng-if="errorMsg" role="alert">
             <strong>Notice:</strong> {{ errorMsg }}
           </div>
-          <div class="alert alert-success" ng-if="successMsg" role="alert" style="border-radius: 8px; background: rgba(0, 255, 135, 0.15); border-color: rgba(0, 255, 135, 0.3); color: #d2ffd6; margin-bottom: 20px;">
+          <div class="custom-alert-success" ng-if="successMsg" role="alert">
             <strong>Success:</strong> {{ successMsg }}
           </div>
 
           <!-- Upload Drop Zone (Visible when no file is selected) -->
           <div id="drop-zone" class="drop-zone mb-4" ng-show="!fileSelected">
-            <svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="mb-3" viewBox="0 0 24 24" style="stroke: url(#cyanBlueGradient); filter: drop-shadow(0 0 10px rgba(0, 242, 254, 0.35));">
+            <svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="mb-3" viewBox="0 0 24 24" style="stroke: url(#blueIndigoGradient);">
               <defs>
-                <linearGradient id="cyanBlueGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stop-color="#00f2fe" />
-                  <stop offset="100%" stop-color="#4facfe" />
+                <linearGradient id="blueIndigoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#2563eb" />
+                  <stop offset="100%" stop-color="#3b82f6" />
                 </linearGradient>
               </defs>
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
               <polyline points="17 8 12 3 7 8"></polyline>
               <line x1="12" y1="3" x2="12" y2="15"></line>
             </svg>
-            <h5 class="text-white font-weight-bold mb-1">Drag &amp; drop your Excel or CSV file here</h5>
+            <h5 class="drop-zone-title mb-1">Drag &amp; drop your Excel or CSV file here</h5>
             <p class="text-muted small mb-0">or click to browse local files (.xlsx, .xls, .csv)</p>
             <input type="file" id="fileInput" accept=".xlsx, .xls, .csv" onchange="angular.element(this).scope().onFileSelect(this)" />
           </div>
 
           <!-- Selected File Header (Visible when file is selected) -->
-          <div class="p-3 mb-4 rounded d-flex justify-content-between align-items-center" ng-show="fileSelected" style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1);">
+          <div class="selected-file-card mb-4" ng-show="fileSelected">
             <div class="d-flex align-items-center">
               <div class="stat-icon" style="margin-right: 14px; width: 44px; height: 44px;">
-                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00f2fe" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                   <polyline points="14 2 14 8 20 8"></polyline>
                   <line x1="16" y1="13" x2="8" y2="13"></line>
@@ -226,7 +226,7 @@
                 </svg>
               </div>
               <div>
-                <div class="text-white font-weight-bold text-truncate" style="max-width: 480px; font-size: 15px;">{{ fileName }}</div>
+                <div class="selected-filename text-truncate" style="max-width: 480px;">{{ fileName }}</div>
                 <div class="text-muted small">{{ (fileSelected.size / 1024) | number:1 }} KB &bull; {{ sheetNames.length || 1 }} Sheet(s) detected</div>
               </div>
             </div>
@@ -254,19 +254,19 @@
               <div class="flow-arrow">&rarr;</div>
               <div class="flow-step">
                 <span>Master Records:</span>
-                <strong style="color: #00ff87;">Matched</strong>
+                <strong style="color: #059669;">Matched</strong>
               </div>
               <div class="flow-arrow">&rarr;</div>
               <div class="flow-step">
                 <span>Appending:</span>
-                <strong style="color: #00f2fe;">{{ getSelectedOutputCount() }} Column(s)</strong>
+                <strong style="color: #2563eb;">{{ getSelectedOutputCount() }} Column(s)</strong>
               </div>
             </div>
 
             <!-- Card 1: Column Detection & Mapping -->
             <div class="mapping-card">
               <div class="d-flex justify-content-between align-items-center mb-3">
-                <label class="text-white small font-weight-bold text-uppercase mb-0" style="letter-spacing: 0.5px;">1. Column Identification &amp; Mapping</label>
+                <label class="section-label small font-weight-bold text-uppercase mb-0" style="letter-spacing: 0.5px;">1. Column Identification &amp; Mapping</label>
                 
                 <span class="badge-detected" ng-if="autoDetected">
                   &#10003; Auto-detected: {{ detectedColumnName }} &rarr; {{ detectedKeyType }}
@@ -300,7 +300,7 @@
             <!-- Card 2: Output Columns Checklist -->
             <div class="mapping-card">
               <div class="d-flex justify-content-between align-items-center mb-3">
-                <label class="text-white small font-weight-bold text-uppercase mb-0" style="letter-spacing: 0.5px;">2. Output Columns to Append to File</label>
+                <label class="section-label small font-weight-bold text-uppercase mb-0" style="letter-spacing: 0.5px;">2. Output Columns to Append to File</label>
                 <span class="text-muted small">{{ getSelectedOutputCount() }} of 4 selected</span>
               </div>
 
@@ -309,7 +309,7 @@
                   <label class="output-checkbox-card" ng-class="{'active': outputCols[tc.id]}">
                     <input type="checkbox" ng-model="outputCols[tc.id]" />
                     <div>
-                      <div class="text-white font-weight-bold small">{{ tc.name }}</div>
+                      <div class="font-weight-bold small checkbox-title">{{ tc.name }}</div>
                       <div class="text-muted" style="font-size: 11px;">{{ tc.desc }}</div>
                     </div>
                   </label>
@@ -318,11 +318,11 @@
             </div>
 
             <!-- Card 3: Multi-Sheet Selection (if applicable) -->
-            <div class="mb-4 p-3 rounded" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05);" ng-show="sheetNames.length > 1">
+            <div class="sheet-selection-card mb-4" ng-show="sheetNames.length > 1">
               <label class="text-muted small d-block mb-3 font-weight-bold text-uppercase" style="letter-spacing: 0.5px;">Worksheets to Process:</label>
               <div class="d-flex flex-wrap" style="gap: 20px;">
-                <label ng-repeat="sheet in sheetNames" class="d-flex align-items-center text-white small mb-0" style="cursor: pointer; user-select: none;">
-                  <input type="checkbox" ng-model="selectedSheets[sheet]" style="width: 16px; height: 16px; margin-right: 8px; cursor: pointer;" />
+                <label ng-repeat="sheet in sheetNames" class="sheet-label d-flex align-items-center small mb-0">
+                  <input type="checkbox" ng-model="selectedSheets[sheet]" style="width: 16px; height: 16px; margin-right: 8px; cursor: pointer; accent-color: var(--primary-color);" />
                   {{ sheet }}
                 </label>
               </div>
