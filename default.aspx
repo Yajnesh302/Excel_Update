@@ -35,12 +35,6 @@
       </div>
 
       <div class="d-flex align-items-center" style="gap: 12px;">
-        <span class="status-pill status-online" ng-if="dbStatus === 'online'">
-          &#9679; Service Active ({{ recordCount }} Records)
-        </span>
-        <span class="status-pill status-offline" ng-if="dbStatus === 'offline'">
-          &#9679; Service Offline
-        </span>
         <button class="btn btn-sm btn-glass-secondary py-2 px-3" ng-click="checkDbStatus()" ng-disabled="isProcessing" title="Refresh System Status">
           Refresh Status
         </button>
