@@ -97,11 +97,11 @@
     <!-- Main Content Row -->
     <div class="row">
       
-      <!-- Left Column: Guidelines & Output Preview -->
-      <div class="col-xl-4 col-lg-5 col-md-12">
+      <!-- Left Column: System Overview & Guidelines -->
+      <div class="col-xl-4 col-lg-4 col-md-12">
         
         <!-- How It Works Panel -->
-        <div class="glass-panel mb-4">
+        <div class="glass-panel">
           <h5 class="panel-heading mb-3 d-flex align-items-center">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
               <circle cx="12" cy="12" r="10"></circle>
@@ -118,66 +118,10 @@
           </ul>
         </div>
 
-        <!-- Demonstration Preview Table Panel -->
-        <div class="glass-panel">
-          <h5 class="panel-heading mb-2 d-flex align-items-center">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
-              <polyline points="9 11 12 14 22 4"></polyline>
-              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-            </svg>
-            Example Row Transformation
-          </h5>
-          <p class="text-muted small mb-3">Retrieved fields are automatically appended to the end of each row:</p>
-          
-          <div class="preview-table-container">
-            <table class="preview-table">
-              <thead>
-                <tr>
-                  <th>Input Key</th>
-                  <th style="color: #2563eb;">+ PCNO</th>
-                  <th style="color: #059669;">+ PIS</th>
-                  <th style="color: #d97706;">+ GPFPRAN</th>
-                  <th style="color: #7c3aed;">+ Bank A/C (ACCNO)</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>2008AE10 <span class="badge-pis">PIS</span></td>
-                  <td>5001</td>
-                  <td>2008AE10</td>
-                  <td>GPF-1111</td>
-                  <td>10000000001</td>
-                </tr>
-                <tr>
-                  <td>2008AE12 <span class="badge-pis">PIS</span></td>
-                  <td>5010</td>
-                  <td>2008AE12</td>
-                  <td>GPF-2222</td>
-                  <td>10000000010</td>
-                </tr>
-                <tr>
-                  <td>GPF-1111 <span class="badge-pis">GPF</span></td>
-                  <td>5001</td>
-                  <td>2008AE10</td>
-                  <td>GPF-1111</td>
-                  <td>10000000001</td>
-                </tr>
-                <tr>
-                  <td>5003 <span class="badge-pis">PCNO</span></td>
-                  <td>5003</td>
-                  <td>2012BC24</td>
-                  <td>PRAN-3333</td>
-                  <td>10000000003</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
       </div>
 
       <!-- Right Column: Interactive Processing Studio -->
-      <div class="col-xl-8 col-lg-7 col-md-12">
+      <div class="col-xl-8 col-lg-8 col-md-12">
         <div class="glass-panel">
           
           <div class="d-flex justify-content-between align-items-center mb-3">
