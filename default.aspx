@@ -6,7 +6,7 @@
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
   <meta name="description" content="Offline Employee Data Sheet Matcher and Record Enricher" />
-  <title>Employee Data Processor</title>
+  <title>Employee Record Mapper</title>
   
   <!-- Local Offline Stylesheets -->
   <link rel="stylesheet" href="lib/bootstrap.min.css" />
@@ -29,12 +29,29 @@
           </svg>
         </div>
         <div>
-          <h1 class="app-title">Employee Data Processor</h1>
+          <h1 class="app-title">Employee Record Mapper</h1>
           <p class="subtitle">Auto-detects employee identifiers, matches master records, and enriches spreadsheets offline</p>
         </div>
       </div>
 
       <div class="d-flex align-items-center" style="gap: 12px;">
+        <% if (Session["UserPCNO"] != null || User.Identity.IsAuthenticated) { %>
+        <div class="d-flex align-items-center" style="gap: 8px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 9999px; padding: 4px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.04);">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+          <span style="font-size: 0.84rem; font-weight: 600; color: #1e293b;">
+            <%= Session["UserName"] != null ? Session["UserName"] : (Session["UserPCNO"] ?? User.Identity.Name) %>
+          </span>
+          <span style="font-size: 0.75rem; color: #2563eb; background: #eff6ff; border: 1px solid #bfdbfe; padding: 2px 8px; border-radius: 9999px; font-weight: 600;">
+            <%= Session["UserDivName"] != null ? Session["UserDivName"] : (Session["UserPCNO"] ?? User.Identity.Name) %>
+          </span>
+        </div>
+        <a href="default.aspx?action=logout" class="btn btn-sm btn-outline-danger py-2 px-3" style="font-weight: 600; border-radius: 8px; text-decoration: none;" title="Sign out of system">
+          Sign Out
+        </a>
+        <% } %>
         <button class="btn btn-sm btn-glass-secondary py-2 px-3" ng-click="checkDbStatus()" ng-disabled="isProcessing" title="Refresh System Status">
           Refresh Status
         </button>
@@ -165,7 +182,7 @@
               </div>
               <div>
                 <div class="selected-filename text-truncate" style="max-width: 480px;">{{ fileName }}</div>
-                <div class="text-muted small">{{ (fileSelected.size / 1024) | number:1 }} KB &bull; {{ sheetNames.length || 1 }} Sheet(s) detected</div>
+                <div class="text-muted small">{{ (fileSelected.size / 1024) | number:1 }} KB &bull; {{ sheetNames.length || 1 }} Sheet(s) &bull; Active: <strong>{{ selectedSheet }}</strong></div>
               </div>
             </div>
             <button type="button" class="btn btn-sm btn-glass-danger font-weight-bold py-2 px-3" ng-click="clearFile()" ng-disabled="isProcessing">
@@ -184,6 +201,11 @@
             
             <!-- Flow Banner -->
             <div class="flow-banner">
+              <div class="flow-step" ng-if="sheetNames.length > 1">
+                <span>Active Sheet:</span>
+                <strong style="color: #4338ca;">{{ selectedSheet }}</strong>
+              </div>
+              <div class="flow-arrow" ng-if="sheetNames.length > 1">&rarr;</div>
               <div class="flow-step">
                 <span>Input:</span>
                 <strong>{{ selectedInputCol || 'None' }}</strong>
@@ -198,6 +220,38 @@
               <div class="flow-step">
                 <span>Appending:</span>
                 <strong style="color: #2563eb;">{{ getSelectedOutputCount() }} Column(s)</strong>
+              </div>
+            </div>
+
+            <!-- Sheet Selection Card (when file has multiple sheets) -->
+            <div class="mapping-card mb-3" ng-show="sheetNames.length > 1" style="background: #f8faff; border-color: #cbd5e1;">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <label class="section-label small font-weight-bold text-uppercase mb-0" style="letter-spacing: 0.5px; color: #1e40af;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" style="margin-right: 6px; vertical-align: -2px;">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="3" y1="9" x2="21" y2="9"></line>
+                    <line x1="9" y1="21" x2="9" y2="9"></line>
+                  </svg>
+                  Active Worksheet to Process
+                </label>
+                <span style="font-size: 0.76rem; background: #e0e7ff; color: #3730a3; padding: 3px 10px; border-radius: 9999px; font-weight: 600;">
+                  {{ sheetNames.length }} Sheets Detected
+                </span>
+              </div>
+              <div class="row align-items-center">
+                <div class="col-md-7">
+                  <label class="text-muted small d-block mb-1 font-weight-bold">Select Sheet:</label>
+                  <select class="form-select-glass" ng-model="selectedSheet" ng-change="onSheetChange()" style="font-weight: 600; font-size: 0.95rem; border-color: #93c5fd;">
+                    <option ng-repeat="s in sheetNames" value="{{ s }}">
+                      📄 {{ s }}
+                    </option>
+                  </select>
+                </div>
+                <div class="col-md-5 mt-2 mt-md-0">
+                  <div class="small text-muted" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; line-height: 1.4;">
+                    <span style="color: #059669; font-weight: 600;">✓ Safe Isolation:</span> Only the selected sheet will be enriched. All other sheets remain untouched.
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -255,20 +309,9 @@
               </div>
             </div>
 
-            <!-- Card 3: Multi-Sheet Selection (if applicable) -->
-            <div class="sheet-selection-card mb-4" ng-show="sheetNames.length > 1">
-              <label class="text-muted small d-block mb-3 font-weight-bold text-uppercase" style="letter-spacing: 0.5px;">Worksheets to Process:</label>
-              <div class="d-flex flex-wrap" style="gap: 20px;">
-                <label ng-repeat="sheet in sheetNames" class="sheet-label d-flex align-items-center small mb-0">
-                  <input type="checkbox" ng-model="selectedSheets[sheet]" style="width: 16px; height: 16px; margin-right: 8px; cursor: pointer; accent-color: var(--primary-color);" />
-                  {{ sheet }}
-                </label>
-              </div>
-            </div>
-
             <!-- Action Button -->
             <button class="btn btn-glass w-100 font-weight-bold text-uppercase py-3" ng-click="processExcelFile()" ng-disabled="isProcessing || dbStatus !== 'online'">
-              Process File &amp; Download Enriched Copy
+              Process Sheet &amp; Download Enriched Copy
             </button>
             
             <p class="text-danger small mt-2 text-center" ng-if="dbStatus !== 'online'">

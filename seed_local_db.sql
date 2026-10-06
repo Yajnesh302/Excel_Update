@@ -108,7 +108,46 @@ FROM V_Emp_Pis_BankAccountDetails p
 FULL OUTER JOIN V_GpfpPran_Max g 
     ON TRIM(UPPER(p.PCNO)) = TRIM(UPPER(g.PCNO));
 
--- Verify View
+-- ====================================================================
+-- CREATE EXCEL_APPUSERS TABLE (Authorized Access)
+-- ====================================================================
+BEGIN
+    EXECUTE IMMEDIATE '
+    CREATE TABLE Excel_AppUsers (
+        PCNO VARCHAR2(50) NOT NULL,
+        Name VARCHAR2(200),
+        Role NUMBER(1) DEFAULT 1 NOT NULL,
+        DivName VARCHAR2(100),
+        CONSTRAINT PK_Excel_AppUsers PRIMARY KEY (PCNO)
+    )';
+EXCEPTION
+    WHEN OTHERS THEN
+        BEGIN
+            EXECUTE IMMEDIATE 'ALTER TABLE Excel_AppUsers ADD DivName VARCHAR2(100)';
+        EXCEPTION
+            WHEN OTHERS THEN NULL;
+        END;
+END;
+/
+
+-- Ensure default admin and test users exist
+MERGE INTO Excel_AppUsers u
+USING (
+    SELECT '1001' AS PCNO, 'Admin User' AS Name, 4 AS Role, 'DKRM/ITISG' AS DivName FROM dual UNION ALL
+    SELECT '1002' AS PCNO, 'Test User' AS Name, 1 AS Role, 'D-ADMIN/STORE' AS DivName FROM dual
+) src
+ON (u.PCNO = src.PCNO)
+WHEN MATCHED THEN
+    UPDATE SET u.DivName = src.DivName
+WHEN NOT MATCHED THEN
+    INSERT (PCNO, Name, Role, DivName) VALUES (src.PCNO, src.Name, src.Role, src.DivName);
+
+COMMIT;
+
+-- Verify View and Users
 PROMPT === V_EMP_DETAILS View Created Successfully ===;
 SELECT * FROM V_EMP_DETAILS ORDER BY PCNO;
+
+PROMPT === Excel_AppUsers Authorized Accounts ===;
+SELECT * FROM Excel_AppUsers WHERE PCNO IN ('1001', '1002');
 EXIT;

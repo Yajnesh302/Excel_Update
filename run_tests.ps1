@@ -1,9 +1,64 @@
 [Reflection.Assembly]::LoadFrom("e:\Excel\bin\EPPlus.dll") | Out-Null
 
 $baseUrl = "http://localhost:51234/default.aspx"
+$loginUrl = "http://localhost:51234/Login.aspx"
 $LF = "`r`n"
 
 Write-Host "=========================================================="
+Write-Host "AUTHENTICATION & ACCESS CONTROL TESTS"
+Write-Host "=========================================================="
+
+$session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+$loginGet = Invoke-WebRequest -Uri $loginUrl -WebSession $session -UseBasicParsing
+
+$vs = [regex]::Match($loginGet.Content, 'id="__VIEWSTATE" value="([^"]*)"').Groups[1].Value
+$vsg = [regex]::Match($loginGet.Content, 'id="__VIEWSTATEGENERATOR" value="([^"]*)"').Groups[1].Value
+$ev = [regex]::Match($loginGet.Content, 'id="__EVENTVALIDATION" value="([^"]*)"').Groups[1].Value
+
+# 1. Test unauthorized login (9999)
+$unauthPost = @{
+    "__VIEWSTATE" = $vs
+    "__VIEWSTATEGENERATOR" = $vsg
+    "__EVENTVALIDATION" = $ev
+    "txtUsername" = "9999"
+    "txtPassword" = "testpassword"
+    "btnLogin" = "Sign In to System"
+}
+$unauthRes = Invoke-WebRequest -Uri $loginUrl -Method Post -Body $unauthPost -WebSession $session -UseBasicParsing
+if ($unauthRes.Content -match "Access Denied: PC number '9999' is not authorized") {
+    Write-Host "-> PASS: Correctly blocked unauthorized user 9999 from logging in!" -ForegroundColor Green
+} else {
+    Write-Host "-> FAIL: Unauthorized user was not blocked!" -ForegroundColor Red
+}
+
+# 2. Test authorized login (1001)
+$loginGet2 = Invoke-WebRequest -Uri $loginUrl -WebSession $session -UseBasicParsing
+$vs2 = [regex]::Match($loginGet2.Content, 'id="__VIEWSTATE" value="([^"]*)"').Groups[1].Value
+$vsg2 = [regex]::Match($loginGet2.Content, 'id="__VIEWSTATEGENERATOR" value="([^"]*)"').Groups[1].Value
+$ev2 = [regex]::Match($loginGet2.Content, 'id="__EVENTVALIDATION" value="([^"]*)"').Groups[1].Value
+
+$authPost = @{
+    "__VIEWSTATE" = $vs2
+    "__VIEWSTATEGENERATOR" = $vsg2
+    "__EVENTVALIDATION" = $ev2
+    "txtUsername" = "1001"
+    "txtPassword" = "validpassword"
+    "btnLogin" = "Sign In to System"
+}
+
+try {
+    $authRes = Invoke-WebRequest -Uri $loginUrl -Method Post -Body $authPost -WebSession $session -UseBasicParsing -MaximumRedirection 0 -ErrorAction Stop
+} catch {
+    $authRes = $_.Exception.Response
+}
+
+if ($authRes.StatusCode -eq 302 -or $authRes.StatusCode -eq "Found") {
+    Write-Host "-> PASS: Authorized user 1001 authenticated successfully! (302 Redirect to default.aspx)" -ForegroundColor Green
+} else {
+    Write-Host "-> FAIL: Authorized login failed with status $($authRes.StatusCode)" -ForegroundColor Red
+}
+
+Write-Host "`n=========================================================="
 Write-Host "TEST 1: Inspect test_gpfpran.xlsx (Auto-Detection)"
 Write-Host "=========================================================="
 $fileBytes1 = [System.IO.File]::ReadAllBytes("e:\Excel\test_gpfpran.xlsx")
@@ -19,7 +74,8 @@ $bodyParts1 = (
 
 $inspectRes1 = Invoke-RestMethod -Uri "$($baseUrl)?action=inspect" -Method Post `
     -ContentType "multipart/form-data; boundary=$boundary1" `
-    -Body ([System.Text.Encoding]::GetEncoding("iso-8859-1").GetBytes($bodyParts1))
+    -Body ([System.Text.Encoding]::GetEncoding("iso-8859-1").GetBytes($bodyParts1)) `
+    -WebSession $session
 
 Write-Host "Detected Key Type: $($inspectRes1.detectedKeyType)"
 Write-Host "Detected Column:   $($inspectRes1.detectedColumn)"
@@ -54,6 +110,7 @@ $bodyPartsProc1 = (
 Invoke-RestMethod -Uri "$($baseUrl)?action=process" -Method Post `
     -ContentType "multipart/form-data; boundary=$boundary2" `
     -Body ([System.Text.Encoding]::GetEncoding("iso-8859-1").GetBytes($bodyPartsProc1)) `
+    -WebSession $session `
     -OutFile "e:\Excel\out_gpfpran.xlsx"
 
 $outPkg1 = New-Object OfficeOpenXml.ExcelPackage([System.IO.FileInfo]::new("e:\Excel\out_gpfpran.xlsx"))
@@ -99,6 +156,7 @@ $bodyPartsProc2 = (
 Invoke-RestMethod -Uri "$($baseUrl)?action=process" -Method Post `
     -ContentType "multipart/form-data; boundary=$boundary3" `
     -Body ([System.Text.Encoding]::GetEncoding("iso-8859-1").GetBytes($bodyPartsProc2)) `
+    -WebSession $session `
     -OutFile "e:\Excel\out_pis_max.xlsx"
 
 $outPkg2 = New-Object OfficeOpenXml.ExcelPackage([System.IO.FileInfo]::new("e:\Excel\out_pis_max.xlsx"))
@@ -156,6 +214,7 @@ $bodyPartsProc3 = (
 Invoke-RestMethod -Uri "$($baseUrl)?action=process" -Method Post `
     -ContentType "multipart/form-data; boundary=$boundary4" `
     -Body ([System.Text.Encoding]::GetEncoding("iso-8859-1").GetBytes($bodyPartsProc3)) `
+    -WebSession $session `
     -OutFile "e:\Excel\out_custom.xlsx"
 
 $outPkg3 = New-Object OfficeOpenXml.ExcelPackage([System.IO.FileInfo]::new("e:\Excel\out_custom.xlsx"))
@@ -172,5 +231,50 @@ if ($outWs3.Cells[2, 4].Text -eq "2008AE10" -and $outWs3.Cells[2, 5].Text -eq "1
     Write-Host "-> FAIL: Unexpected values in out_custom.xlsx" -ForegroundColor Red
 }
 $outPkg3.Dispose()
+
+Write-Host "`n=========================================================="
+Write-Host "TEST 5: Multi-Sheet Isolation (Process Staff_List, Preserve Dept_Summary)"
+Write-Host "=========================================================="
+$fileBytes4 = [System.IO.File]::ReadAllBytes("e:\Excel\test_multisheet.xlsx")
+$boundary5 = [System.Guid]::NewGuid().ToString()
+$bodyPartsProc5 = (
+    "--$boundary5",
+    "Content-Disposition: form-data; name=`"excelFile`"; filename=`"test_multisheet.xlsx`"",
+    "Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet$LF",
+    [System.Text.Encoding]::GetEncoding("iso-8859-1").GetString($fileBytes4),
+    "--$boundary5",
+    "Content-Disposition: form-data; name=`"sheet`"$LF",
+    "Staff_List",
+    "--$boundary5",
+    "Content-Disposition: form-data; name=`"inputCol`"$LF",
+    "GPFPRAN",
+    "--$boundary5",
+    "Content-Disposition: form-data; name=`"keyType`"$LF",
+    "GPFPRAN",
+    "--$boundary5",
+    "Content-Disposition: form-data; name=`"outputCols`"$LF",
+    "PCNO,PIS,BANK_ACCNO",
+    "--$boundary5--$LF"
+) -join $LF
+
+Invoke-RestMethod -Uri "$($baseUrl)?action=process" -Method Post `
+    -ContentType "multipart/form-data; boundary=$boundary5" `
+    -Body ([System.Text.Encoding]::GetEncoding("iso-8859-1").GetBytes($bodyPartsProc5)) `
+    -WebSession $session `
+    -OutFile "e:\Excel\out_multisheet.xlsx"
+
+$outPkg5 = New-Object OfficeOpenXml.ExcelPackage([System.IO.FileInfo]::new("e:\Excel\out_multisheet.xlsx"))
+$wsStaff = $outPkg5.Workbook.Worksheets["Staff_List"]
+$wsDept  = $outPkg5.Workbook.Worksheets["Dept_Summary"]
+
+$staffOk = ($wsStaff.Dimension.End.Column -eq 5 -and $wsStaff.Cells[2,3].Text -eq "5001" -and $wsStaff.Cells[2,4].Text -eq "2008AE10")
+$deptOk = ($wsDept.Dimension.End.Column -eq 2 -and $wsDept.Cells[2,1].Text -eq "Research & Development" -and $wsDept.Cells[2,2].Text -eq "5000000")
+
+if ($staffOk -and $deptOk) {
+    Write-Host "-> PASS: Staff_List was enriched, and Dept_Summary remained 100% untouched!" -ForegroundColor Green
+} else {
+    Write-Host "-> FAIL: Multi-sheet isolation verification failed" -ForegroundColor Red
+}
+$outPkg5.Dispose()
 
 Write-Host "`nAll validation tests complete!"

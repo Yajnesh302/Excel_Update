@@ -47,6 +47,7 @@
     <Reference Include="System.Web" />
     <Reference Include="System.Xml" />
     <Reference Include="System.Configuration" />
+    <Reference Include="System.DirectoryServices" />
     <Reference Include="EPPlus">
       <HintPath>packages\EPPlus.4.5.3.3\lib\net40\EPPlus.dll</HintPath>
     </Reference>
@@ -56,6 +57,7 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="default.aspx" />
+    <Content Include="Login.aspx" />
     <Content Include="app.js" />
     <Content Include="style.css" />
     <Content Include="lib\angular.min.js" />
@@ -64,9 +66,17 @@
     <Content Include="Web.config" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="ADHelper.cs" />
     <Compile Include="default.aspx.cs">
       <DependentUpon>default.aspx</DependentUpon>
       <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Login.aspx.cs">
+      <DependentUpon>Login.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Login.aspx.designer.cs">
+      <DependentUpon>Login.aspx</DependentUpon>
     </Compile>
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

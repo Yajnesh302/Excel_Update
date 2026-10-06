@@ -3,6 +3,7 @@ using System.IO;
 using System.Data;
 using System.Configuration;
 using System.Web;
+using System.Web.Security;
 using System.Collections.Generic;
 using System.Web.Script.Serialization;
 using System.Text.RegularExpressions;
@@ -29,6 +30,34 @@ namespace ExcelProcessor
         protected void Page_Load(object sender, EventArgs e)
         {
             string action = Request.QueryString["action"];
+
+            // Handle Logout
+            if (string.Equals(action, "logout", StringComparison.OrdinalIgnoreCase))
+            {
+                FormsAuthentication.SignOut();
+                Session.Clear();
+                Response.Redirect("Login.aspx", true);
+                return;
+            }
+
+            // Enforce Authentication
+            if (!User.Identity.IsAuthenticated)
+            {
+                Response.Redirect("Login.aspx", true);
+                return;
+            }
+
+            // Restore session if needed
+            if (Session["UserPCNO"] == null)
+            {
+                Session["UserPCNO"] = User.Identity.Name;
+            }
+
+            if (Session["UserDivName"] == null && Session["UserPCNO"] != null)
+            {
+                Session["UserDivName"] = ResolveUserDivName(Session["UserPCNO"].ToString());
+            }
+
             if (string.IsNullOrEmpty(action))
             {
                 // Serve standard ASPX page rendering (default behavior)
@@ -206,10 +235,13 @@ namespace ExcelProcessor
                 List<object> columns = new List<object>();
                 string detectedColumn = null;
                 string detectedKeyType = null;
+                string requestedSheet = Request.Form["sheetName"] ?? Request.Form["sheet"];
+                string activeSheet = "Default";
 
                 if (file.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
                 {
                     sheetNames.Add("Default");
+                    activeSheet = "Default";
                     List<List<string>> csvRows = ParseCsv(file.InputStream);
                     if (csvRows.Count > 0)
                     {
@@ -240,7 +272,17 @@ namespace ExcelProcessor
 
                         if (package.Workbook.Worksheets.Count > 0)
                         {
-                            ExcelWorksheet ws = package.Workbook.Worksheets[1]; // 1-based index in EPPlus
+                            ExcelWorksheet ws = null;
+                            if (!string.IsNullOrWhiteSpace(requestedSheet))
+                            {
+                                ws = package.Workbook.Worksheets[requestedSheet.Trim()];
+                            }
+                            if (ws == null)
+                            {
+                                ws = package.Workbook.Worksheets[1]; // 1-based index in EPPlus
+                            }
+                            activeSheet = ws.Name;
+
                             var dim = ws.Dimension;
                             if (dim != null)
                             {
@@ -291,6 +333,7 @@ namespace ExcelProcessor
                 {
                     success = true,
                     sheets = sheetNames,
+                    activeSheet = activeSheet,
                     columns = columns,
                     detectedColumn = detectedColumn,
                     detectedKeyType = detectedKeyType
@@ -376,20 +419,11 @@ namespace ExcelProcessor
                 return;
             }
 
-            // Worksheets to process
-            string selectedSheetsParam = Request.Form["sheets"];
-            List<string> selectedSheetsList = new List<string>();
-            if (!string.IsNullOrEmpty(selectedSheetsParam))
+            // Target worksheet to process (handles 1 sheet at a time)
+            string selectedSheet = Request.Form["sheet"] ?? Request.Form["sheetName"] ?? Request.Form["sheets"];
+            if (!string.IsNullOrEmpty(selectedSheet) && selectedSheet.Contains(","))
             {
-                string[] ss = selectedSheetsParam.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
-                foreach (string s in ss)
-                {
-                    string trimmed = s.Trim();
-                    if (!string.IsNullOrEmpty(trimmed) && !selectedSheetsList.Contains(trimmed))
-                    {
-                        selectedSheetsList.Add(trimmed);
-                    }
-                }
+                selectedSheet = selectedSheet.Split(',')[0].Trim();
             }
 
             try
@@ -402,107 +436,97 @@ namespace ExcelProcessor
                         return;
                     }
 
-                    bool processedAny = false;
-
-                    foreach (ExcelWorksheet ws in package.Workbook.Worksheets)
+                    ExcelWorksheet ws = null;
+                    if (!string.IsNullOrWhiteSpace(selectedSheet))
                     {
-                        if (selectedSheetsList.Count > 0 && !selectedSheetsList.Contains(ws.Name))
-                        {
-                            continue;
-                        }
+                        ws = package.Workbook.Worksheets[selectedSheet.Trim()];
+                    }
+                    if (ws == null && package.Workbook.Worksheets.Count > 0)
+                    {
+                        ws = package.Workbook.Worksheets[1]; // default to first sheet
+                    }
 
-                        var dimension = ws.Dimension;
-                        if (dimension == null)
-                        {
-                            if (selectedSheetsList.Contains(ws.Name))
-                            {
-                                ReturnError(string.Format("Selected sheet '{0}' is empty.", ws.Name));
-                                return;
-                            }
-                            continue;
-                        }
+                    if (ws == null)
+                    {
+                        ReturnError("Target worksheet could not be found.");
+                        return;
+                    }
 
-                        int rCount = dimension.End.Row;
-                        int cCount = dimension.End.Column;
-                        int maxHeaderScanRows = Math.Min(rCount, 25);
-                        int inputColIndex = -1;
-                        int headerRowIndex = -1;
+                    var dimension = ws.Dimension;
+                    if (dimension == null)
+                    {
+                        ReturnError(string.Format("Selected sheet '{0}' is empty.", ws.Name));
+                        return;
+                    }
 
-                        // 1. Locate the header row and input column
-                        for (int r = 1; r <= maxHeaderScanRows; r++)
-                        {
-                            for (int c = 1; c <= cCount; c++)
-                            {
-                                string cellText = ws.Cells[r, c].Text;
-                                if (IsMatchingInputColumn(cellText, inputColName, keyType))
-                                {
-                                    inputColIndex = c;
-                                    headerRowIndex = r;
-                                    break;
-                                }
-                            }
-                            if (inputColIndex != -1) break;
-                        }
+                    int rCount = dimension.End.Row;
+                    int cCount = dimension.End.Column;
+                    int maxHeaderScanRows = Math.Min(rCount, 25);
+                    int inputColIndex = -1;
+                    int headerRowIndex = -1;
 
-                        if (inputColIndex == -1)
+                    // 1. Locate the header row and input column
+                    for (int r = 1; r <= maxHeaderScanRows; r++)
+                    {
+                        for (int c = 1; c <= cCount; c++)
                         {
-                            // If user specified an explicit column name or index, try fallback
-                            int parsedCol;
-                            if (int.TryParse(inputColName, out parsedCol) && parsedCol >= 1 && parsedCol <= cCount)
+                            string cellText = ws.Cells[r, c].Text;
+                            if (IsMatchingInputColumn(cellText, inputColName, keyType))
                             {
-                                inputColIndex = parsedCol;
-                                headerRowIndex = 1;
-                            }
-                            else if (selectedSheetsList.Contains(ws.Name))
-                            {
-                                ReturnError(string.Format("Selected sheet '{0}' does not contain column '{1}' or key type '{2}'.", ws.Name, inputColName ?? keyType, keyType));
-                                return;
-                            }
-                            else
-                            {
-                                continue;
+                                inputColIndex = c;
+                                headerRowIndex = r;
+                                break;
                             }
                         }
+                        if (inputColIndex != -1) break;
+                    }
 
-                        processedAny = true;
-
-                        // 2. Append chosen output column headers
-                        Dictionary<string, int> targetColIndexes = new Dictionary<string, int>();
-                        int currentColCount = cCount;
-                        foreach (string outCol in outputCols)
+                    if (inputColIndex == -1)
+                    {
+                        // If user specified an explicit column name or index, try fallback
+                        int parsedCol;
+                        if (int.TryParse(inputColName, out parsedCol) && parsedCol >= 1 && parsedCol <= cCount)
                         {
-                            currentColCount++;
-                            targetColIndexes[outCol] = currentColCount;
-                            ws.Cells[headerRowIndex, currentColCount].Value = GetOutputColumnHeaderTitle(outCol);
+                            inputColIndex = parsedCol;
+                            headerRowIndex = 1;
                         }
-
-                        // 3. Process each row
-                        for (int r = headerRowIndex + 1; r <= rCount; r++)
+                        else
                         {
-                            string rawVal = ws.Cells[r, inputColIndex].Text;
-                            string cleanedVal = CleanValue(rawVal);
-
-                            if (string.IsNullOrEmpty(cleanedVal))
-                            {
-                                // Leave empty
-                                continue;
-                            }
-
-                            EmpRecord matchedRecord = LookupRecord(cleanedVal, keyType, byPcno, byPis, byGpfPran, byBankAccNo);
-
-                            foreach (string outCol in outputCols)
-                            {
-                                int targetCol = targetColIndexes[outCol];
-                                string valToInsert = GetRecordValue(matchedRecord, outCol);
-                                ws.Cells[r, targetCol].Value = valToInsert;
-                            }
+                            ReturnError(string.Format("Sheet '{0}' does not contain column '{1}' or key type '{2}'.", ws.Name, inputColName ?? keyType, keyType));
+                            return;
                         }
                     }
 
-                    if (!processedAny)
+                    // 2. Append chosen output column headers
+                    Dictionary<string, int> targetColIndexes = new Dictionary<string, int>();
+                    int currentColCount = cCount;
+                    foreach (string outCol in outputCols)
                     {
-                        ReturnError("No valid worksheets were processed.");
-                        return;
+                        currentColCount++;
+                        targetColIndexes[outCol] = currentColCount;
+                        ws.Cells[headerRowIndex, currentColCount].Value = GetOutputColumnHeaderTitle(outCol);
+                    }
+
+                    // 3. Process each row
+                    for (int r = headerRowIndex + 1; r <= rCount; r++)
+                    {
+                        string rawVal = ws.Cells[r, inputColIndex].Text;
+                        string cleanedVal = CleanValue(rawVal);
+
+                        if (string.IsNullOrEmpty(cleanedVal))
+                        {
+                            // Leave empty
+                            continue;
+                        }
+
+                        EmpRecord matchedRecord = LookupRecord(cleanedVal, keyType, byPcno, byPis, byGpfPran, byBankAccNo);
+
+                        foreach (string outCol in outputCols)
+                        {
+                            int targetCol = targetColIndexes[outCol];
+                            string valToInsert = GetRecordValue(matchedRecord, outCol);
+                            ws.Cells[r, targetCol].Value = valToInsert;
+                        }
                     }
 
                     byte[] fileBytes;
@@ -1130,6 +1154,50 @@ namespace ExcelProcessor
             Response.StatusCode = 200;
             var serializer = new JavaScriptSerializer();
             Response.Write(serializer.Serialize(new { error = message }));
+        }
+
+        private string ResolveUserDivName(string pcno)
+        {
+            if (string.IsNullOrWhiteSpace(pcno)) return "";
+            try
+            {
+                string connStr = ConfigurationManager.ConnectionStrings["OracleConn"] != null 
+                    ? ConfigurationManager.ConnectionStrings["OracleConn"].ConnectionString 
+                    : null;
+                if (!string.IsNullOrEmpty(connStr))
+                {
+                    using (OracleConnection conn = new OracleConnection(connStr))
+                    {
+                        conn.Open();
+                        string targetTable = ConfigurationManager.AppSettings["AuthUsersTable"] ?? "Excel_AppUsers";
+                        try
+                        {
+                            using (OracleCommand cmd = new OracleCommand("SELECT DIVNAME FROM " + targetTable + " WHERE UPPER(TRIM(PCNO)) = UPPER(TRIM(:PCNO)) AND ROWNUM <= 1", conn))
+                            {
+                                cmd.Parameters.Add(new OracleParameter("PCNO", pcno.Trim()));
+                                object res = cmd.ExecuteScalar();
+                                if (res != null && res != DBNull.Value && !string.IsNullOrWhiteSpace(res.ToString()))
+                                    return res.ToString();
+                            }
+                        }
+                        catch { }
+
+                        try
+                        {
+                            using (OracleCommand cmdEmp = new OracleCommand("SELECT DIVNAME FROM hrdata.empdetails WHERE UPPER(TRIM(PCNO)) = UPPER(TRIM(:PCNO)) AND ROWNUM <= 1", conn))
+                            {
+                                cmdEmp.Parameters.Add(new OracleParameter("PCNO", pcno.Trim()));
+                                object resEmp = cmdEmp.ExecuteScalar();
+                                if (resEmp != null && resEmp != DBNull.Value && !string.IsNullOrWhiteSpace(resEmp.ToString()))
+                                    return resEmp.ToString();
+                            }
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch { }
+            return pcno;
         }
     }
 }

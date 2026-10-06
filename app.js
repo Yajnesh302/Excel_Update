@@ -17,7 +17,7 @@
 
       // Excel inspection results
       $scope.sheetNames = [];
-      $scope.selectedSheets = {};
+      $scope.selectedSheet = '';
       $scope.excelColumns = [];
       
       // Column Mapping State
@@ -88,7 +88,7 @@
         $scope.errorMsg = '';
         $scope.successMsg = '';
         $scope.sheetNames = [];
-        $scope.selectedSheets = {};
+        $scope.selectedSheet = '';
         $scope.excelColumns = [];
         $scope.autoDetected = false;
         $scope.detectedColumnName = '';
@@ -97,13 +97,25 @@
         $scope.inspectUploadedFile();
       };
 
+      // When the user switches to another sheet in a multi-sheet file
+      $scope.onSheetChange = function () {
+        if ($scope.fileSelected && $scope.selectedSheet) {
+          $scope.inspectUploadedFile($scope.selectedSheet);
+        }
+      };
+
       // Inspect file headers and worksheets via backend
-      $scope.inspectUploadedFile = function () {
+      $scope.inspectUploadedFile = function (targetSheet) {
         if (!$scope.fileSelected) return;
         $scope.isProcessing = true;
 
         var fd = new FormData();
         fd.append('excelFile', $scope.fileSelected);
+        if (targetSheet) {
+          fd.append('sheetName', targetSheet);
+        } else if ($scope.selectedSheet) {
+          fd.append('sheetName', $scope.selectedSheet);
+        }
 
         $http.post('default.aspx?action=inspect', fd, {
           transformRequest: angular.identity,
@@ -113,10 +125,7 @@
           $scope.isProcessing = false;
           if (response.data.success) {
             $scope.sheetNames = response.data.sheets || [];
-            angular.forEach($scope.sheetNames, function (sheet) {
-              $scope.selectedSheets[sheet] = true;
-            });
-
+            $scope.selectedSheet = response.data.activeSheet || $scope.sheetNames[0] || 'Default';
             $scope.excelColumns = response.data.columns || [];
 
             // Auto-detection logic
@@ -262,13 +271,8 @@
           return;
         }
 
-        var selectedSheetsList = [];
-        angular.forEach($scope.selectedSheets, function (val, key) {
-          if (val) selectedSheetsList.push(key);
-        });
-
-        if ($scope.sheetNames.length > 0 && selectedSheetsList.length === 0) {
-          $scope.errorMsg = 'Please select at least one worksheet to process.';
+        if ($scope.sheetNames.length > 0 && !$scope.selectedSheet) {
+          $scope.errorMsg = 'Please select a worksheet to process.';
           return;
         }
 
@@ -281,7 +285,8 @@
         fd.append('inputCol', $scope.selectedInputCol);
         fd.append('keyType', $scope.selectedKeyType);
         fd.append('outputCols', outputList.join(','));
-        fd.append('sheets', selectedSheetsList.join(','));
+        fd.append('sheet', $scope.selectedSheet);
+        fd.append('sheets', $scope.selectedSheet);
 
         $http.post('default.aspx?action=process', fd, {
           transformRequest: angular.identity,
