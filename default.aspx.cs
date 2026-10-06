@@ -167,7 +167,7 @@ namespace ExcelProcessor
             {
                 new { id = "PCNO", name = "PC Number (PCNO)", description = "Employee Cadre / PC Number" },
                 new { id = "PIS", name = "PIS Number (PIS)", description = "Personnel Information System Number" },
-                new { id = "GPFPRAN", name = "GPF / PRAN (GPFPRAN)", description = "GPF / PRAN Account Number (from Temp_Sh_Lpt_Sep / V_GpfpPran_Max)" },
+                new { id = "GPFPRAN", name = "GPF / PRAN (GPFPRAN)", description = "GPF / PRAN Account Number (from V_GpfpPran_Max)" },
                 new { id = "BANK_ACCNO", name = "Bank Account No (ACCNO)", description = "Bank Account Number (from V_Emp_Pis_BankAccountDetails)" }
             };
 
@@ -725,7 +725,17 @@ namespace ExcelProcessor
                             // Map by PCNO
                             if (!string.IsNullOrEmpty(pcno))
                             {
-                                if (!byPcno.ContainsKey(pcno))
+                                EmpRecord existing;
+                                if (byPcno.TryGetValue(pcno, out existing))
+                                {
+                                    if (string.IsNullOrEmpty(existing.Pis) && !string.IsNullOrEmpty(record.Pis))
+                                        existing.Pis = record.Pis;
+                                    if (string.IsNullOrEmpty(existing.GpfPran) && !string.IsNullOrEmpty(record.GpfPran))
+                                        existing.GpfPran = record.GpfPran;
+                                    if (string.IsNullOrEmpty(existing.BankAccNo) && !string.IsNullOrEmpty(record.BankAccNo))
+                                        existing.BankAccNo = record.BankAccNo;
+                                }
+                                else
                                 {
                                     byPcno[pcno] = record;
                                 }
@@ -895,7 +905,7 @@ namespace ExcelProcessor
 
             string norm = NormalizeHeader(headerName);
 
-            // Check GPF / PRAN first (in Temp_Sh_Lpt_Sep and V_GpfpPran_Max)
+            // Check GPF / PRAN first (in V_GpfpPran_Max)
             if (norm == "GPFPRAN" || norm == "GPF_PRAN" || norm == "GPF/PRAN" || norm == "GPF PRAN" ||
                 norm == "GPF" || norm == "PRAN" || norm == "GPFNO" || norm == "PRANNO" ||
                 norm == "GPF NO" || norm == "PRAN NO" || norm == "GPF_NO" || norm == "PRAN_NO" ||

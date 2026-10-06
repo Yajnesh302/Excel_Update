@@ -1,14 +1,15 @@
 -- ====================================================================
 -- SEED SCRIPT FOR LOCAL ORACLE DATABASE (Oracle 21c XE)
--- Tables used (3 tables):
---   1. Temp_Sh_Lpt_Sep              (Columns: SLNO, GPFPRAN)
---   2. V_GpfpPran_Max                (Columns: ACCNO, PCNO)
+-- Permanent Master Tables/Views used:
+--   1. V_GpfpPran_Max                (Columns: ACCNO, PCNO)
 --      [ACCNO refers to GPFPRAN]
---   3. V_Emp_Pis_BankAccountDetails  (Columns: PIS, PCNO, ACCNO)
+--   2. V_Emp_Pis_BankAccountDetails  (Columns: PIS, PCNO, ACCNO)
 --      [ACCNO refers to Bank Account Number, NOT GPFPRAN]
 --
--- Resulting New View:
---   V_EMP_DETAILS (Columns: SLNO, GPFPRAN, PCNO, PIS, BANK_ACCNO, ACCNO)
+-- Note: Temp_Sh_Lpt_Sep was a temporary staging table and is NOT used.
+--
+-- Resulting Unified View:
+--   V_EMP_DETAILS (Columns: PCNO, PIS, GPFPRAN, BANK_ACCNO, ACCNO)
 -- ====================================================================
 
 -- 1. Drop old tables/views if they exist
@@ -26,7 +27,7 @@ EXCEPTION
 END;
 /
 
--- 2. Create Table 1: Temp_Sh_Lpt_Sep
+-- Drop temporary table Temp_Sh_Lpt_Sep (not used)
 BEGIN
     EXECUTE IMMEDIATE 'DROP TABLE Temp_Sh_Lpt_Sep CASCADE CONSTRAINTS';
 EXCEPTION
@@ -34,12 +35,7 @@ EXCEPTION
 END;
 /
 
-CREATE TABLE Temp_Sh_Lpt_Sep (
-    SLNO NUMBER,
-    GPFPRAN VARCHAR2(50)
-);
-
--- 3. Create Table 2: V_GpfpPran_Max
+-- 2. Create Table 1: V_GpfpPran_Max (ACCNO = GPFPRAN, PCNO)
 BEGIN
     EXECUTE IMMEDIATE 'DROP TABLE V_GpfpPran_Max CASCADE CONSTRAINTS';
 EXCEPTION
@@ -52,7 +48,7 @@ CREATE TABLE V_GpfpPran_Max (
     PCNO VARCHAR2(50)
 );
 
--- 4. Create Table 3: V_Emp_Pis_BankAccountDetails
+-- 3. Create Table 2: V_Emp_Pis_BankAccountDetails (PIS, PCNO, ACCNO = Bank Account)
 BEGIN
     EXECUTE IMMEDIATE 'DROP TABLE V_Emp_Pis_BankAccountDetails CASCADE CONSTRAINTS';
 EXCEPTION
@@ -70,24 +66,15 @@ CREATE TABLE V_Emp_Pis_BankAccountDetails (
 -- SEED DATA
 -- ====================================================================
 
--- Seed Table 1: Temp_Sh_Lpt_Sep (GPFPRAN)
-INSERT INTO Temp_Sh_Lpt_Sep (SLNO, GPFPRAN) VALUES (1, 'GPF-1111');
-INSERT INTO Temp_Sh_Lpt_Sep (SLNO, GPFPRAN) VALUES (2, 'GPF-2222');
-INSERT INTO Temp_Sh_Lpt_Sep (SLNO, GPFPRAN) VALUES (3, 'PRAN-3333');
-INSERT INTO Temp_Sh_Lpt_Sep (SLNO, GPFPRAN) VALUES (4, 'PRAN-4444');
-INSERT INTO Temp_Sh_Lpt_Sep (SLNO, GPFPRAN) VALUES (5, 'GPF-5555');
-
--- Seed Table 2: V_GpfpPran_Max (ACCNO = GPFPRAN, PCNO)
+-- Seed Table 1: V_GpfpPran_Max (ACCNO = GPFPRAN, PCNO)
 INSERT INTO V_GpfpPran_Max (ACCNO, PCNO) VALUES ('GPF-1111', '5001');
-INSERT INTO V_GpfpPran_Max (ACCNO, PCNO) VALUES ('GPF-2222', '5002');
 INSERT INTO V_GpfpPran_Max (ACCNO, PCNO) VALUES ('GPF-2222', '5010');
 INSERT INTO V_GpfpPran_Max (ACCNO, PCNO) VALUES ('PRAN-3333', '5003');
 INSERT INTO V_GpfpPran_Max (ACCNO, PCNO) VALUES ('PRAN-4444', '5004');
-INSERT INTO V_GpfpPran_Max (ACCNO, PCNO) VALUES ('GPF-5555', '5015');
 INSERT INTO V_GpfpPran_Max (ACCNO, PCNO) VALUES ('GPF-5555', '5025');
 INSERT INTO V_GpfpPran_Max (ACCNO, PCNO) VALUES ('GPF-9999', '5099');
 
--- Seed Table 3: V_Emp_Pis_BankAccountDetails (PIS, PCNO, ACCNO = Bank Account Number)
+-- Seed Table 2: V_Emp_Pis_BankAccountDetails (PIS, PCNO, ACCNO = Bank Account Number)
 -- Case 1: PIS 2008AE10 -> PCNO 5001, Bank A/C 10000000001
 INSERT INTO V_Emp_Pis_BankAccountDetails (PIS, PCNO, ACCNO) VALUES ('2008AE10', '5001', '10000000001');
 
@@ -108,19 +95,18 @@ INSERT INTO V_Emp_Pis_BankAccountDetails (PIS, PCNO, ACCNO) VALUES ('2015EF48', 
 COMMIT;
 
 -- ====================================================================
--- CREATE UNIFIED VIEW USING THE 3 TABLES
+-- CREATE UNIFIED VIEW
 -- ====================================================================
 CREATE OR REPLACE VIEW V_EMP_DETAILS AS
 SELECT 
-    a.SLNO,
-    COALESCE(a.GPFPRAN, b.ACCNO) AS GPFPRAN,
-    COALESCE(b.PCNO, c.PCNO) AS PCNO,
-    c.PIS,
-    c.ACCNO AS BANK_ACCNO,
-    c.ACCNO AS ACCNO
-FROM Temp_Sh_Lpt_Sep a
-FULL OUTER JOIN V_GpfpPran_Max b ON a.GPFPRAN = b.ACCNO
-FULL OUTER JOIN V_Emp_Pis_BankAccountDetails c ON b.PCNO = c.PCNO;
+    COALESCE(TRIM(g.PCNO), TRIM(p.PCNO)) AS PCNO,
+    TRIM(p.PIS) AS PIS,
+    COALESCE(TRIM(g.ACCNO), MAX(TRIM(g.ACCNO)) OVER (PARTITION BY TRIM(p.PIS))) AS GPFPRAN,
+    TRIM(p.ACCNO) AS BANK_ACCNO,
+    TRIM(p.ACCNO) AS ACCNO
+FROM V_Emp_Pis_BankAccountDetails p
+FULL OUTER JOIN V_GpfpPran_Max g 
+    ON TRIM(UPPER(p.PCNO)) = TRIM(UPPER(g.PCNO));
 
 -- Verify View
 PROMPT === V_EMP_DETAILS View Created Successfully ===;

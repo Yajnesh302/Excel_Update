@@ -32,7 +32,7 @@
       $scope.availableKeyTypes = [
         { id: 'PCNO', name: 'PC Number (PCNO)', desc: 'Matches against Employee PC Number' },
         { id: 'PIS', name: 'PIS Number (PIS)', desc: 'Matches against PIS Number' },
-        { id: 'GPFPRAN', name: 'GPF / PRAN (GPFPRAN)', desc: 'Matches against GPF / PRAN Number (from Temp_Sh_Lpt_Sep / V_GpfpPran_Max)' },
+        { id: 'GPFPRAN', name: 'GPF / PRAN (GPFPRAN)', desc: 'Matches against GPF / PRAN Number (from V_GpfpPran_Max)' },
         { id: 'BANK_ACCNO', name: 'Bank Account No (ACCNO)', desc: 'Matches against Bank Account Number (from V_Emp_Pis_BankAccountDetails)' }
       ];
 
