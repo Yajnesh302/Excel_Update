@@ -15,7 +15,13 @@ namespace ExcelProcessor
     {
         public string Pcno { get; set; }
         public string Pis { get; set; }
-        public string AccNo { get; set; }
+        public string GpfPran { get; set; }
+        public string BankAccNo { get; set; }
+        public string AccNo
+        {
+            get { return BankAccNo; }
+            set { BankAccNo = value; }
+        }
     }
 
     public partial class _default : System.Web.UI.Page
@@ -84,6 +90,22 @@ namespace ExcelProcessor
             return string.IsNullOrWhiteSpace(col) ? "PIS" : col.Trim().ToUpperInvariant();
         }
 
+        private string GetConfigGpfPranColumn()
+        {
+            string col = ConfigurationManager.AppSettings["DatabaseGpfPranColumn"];
+            return string.IsNullOrWhiteSpace(col) ? "GPFPRAN" : col.Trim().ToUpperInvariant();
+        }
+
+        private string GetConfigBankAccNoColumn()
+        {
+            string col = ConfigurationManager.AppSettings["DatabaseBankAccNoColumn"];
+            if (string.IsNullOrWhiteSpace(col))
+            {
+                col = ConfigurationManager.AppSettings["DatabaseAccNoColumn"];
+            }
+            return string.IsNullOrWhiteSpace(col) ? "BANK_ACCNO" : col.Trim().ToUpperInvariant();
+        }
+
         private string GetConfigAccNoColumn()
         {
             string col = ConfigurationManager.AppSettings["DatabaseAccNoColumn"];
@@ -145,8 +167,8 @@ namespace ExcelProcessor
             {
                 new { id = "PCNO", name = "PC Number (PCNO)", description = "Employee Cadre / PC Number" },
                 new { id = "PIS", name = "PIS Number (PIS)", description = "Personnel Information System Number" },
-                new { id = "ACCNO", name = "Account Number (ACCNO)", description = "Account Number (GPF / PRAN)" },
-                new { id = "GPFPRAN", name = "GPF / PRAN (GPFPRAN)", description = "GPF / PRAN Account Number" }
+                new { id = "GPFPRAN", name = "GPF / PRAN (GPFPRAN)", description = "GPF / PRAN Account Number (from Temp_Sh_Lpt_Sep / V_GpfpPran_Max)" },
+                new { id = "BANK_ACCNO", name = "Bank Account No (ACCNO)", description = "Bank Account Number (from V_Emp_Pis_BankAccountDetails)" }
             };
 
             var result = new
@@ -297,23 +319,25 @@ namespace ExcelProcessor
 
             // Input Column & Key Type
             string inputColName = Request.Form["inputCol"];
-            string keyType = Request.Form["keyType"]; // "PCNO", "PIS", "ACCNO", "GPFPRAN"
+            string keyType = Request.Form["keyType"]; // "PCNO", "PIS", "GPFPRAN", "BANK_ACCNO", "ACCNO"
 
             if (string.IsNullOrWhiteSpace(keyType))
             {
-                ReturnError("Identifier key type is required (PCNO, PIS, ACCNO, or GPFPRAN).");
+                ReturnError("Identifier key type is required (PCNO, PIS, GPFPRAN, or BANK_ACCNO).");
                 return;
             }
             keyType = keyType.Trim().ToUpperInvariant();
+            if (keyType == "ACCNO") keyType = "BANK_ACCNO";
 
             // Output columns to append
             string outputColsParam = Request.Form["outputCols"];
             if (string.IsNullOrWhiteSpace(outputColsParam))
             {
                 // Fallback: pick standard complementary output columns
-                if (keyType == "PIS") outputColsParam = "PCNO,ACCNO";
-                else if (keyType == "PCNO") outputColsParam = "PIS,ACCNO";
-                else outputColsParam = "PCNO,PIS";
+                if (keyType == "PIS") outputColsParam = "PCNO,GPFPRAN,BANK_ACCNO";
+                else if (keyType == "PCNO") outputColsParam = "PIS,GPFPRAN,BANK_ACCNO";
+                else if (keyType == "GPFPRAN") outputColsParam = "PCNO,PIS,BANK_ACCNO";
+                else outputColsParam = "PCNO,PIS,GPFPRAN";
             }
 
             string[] outputColsRaw = outputColsParam.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
@@ -321,7 +345,7 @@ namespace ExcelProcessor
             foreach (string oc in outputColsRaw)
             {
                 string norm = oc.Trim().ToUpperInvariant();
-                if ((norm == "PCNO" || norm == "PIS" || norm == "ACCNO" || norm == "GPFPRAN") && !outputCols.Contains(norm))
+                if ((norm == "PCNO" || norm == "PIS" || norm == "GPFPRAN" || norm == "BANK_ACCNO" || norm == "ACCNO") && !outputCols.Contains(norm))
                 {
                     outputCols.Add(norm);
                 }
@@ -336,9 +360,10 @@ namespace ExcelProcessor
             // Load data from Oracle View into memory
             Dictionary<string, EmpRecord> byPcno;
             Dictionary<string, EmpRecord> byPis;
-            Dictionary<string, EmpRecord> byAccNo;
+            Dictionary<string, EmpRecord> byGpfPran;
+            Dictionary<string, EmpRecord> byBankAccNo;
 
-            string loadError = LoadViewData(out byPcno, out byPis, out byAccNo);
+            string loadError = LoadViewData(out byPcno, out byPis, out byGpfPran, out byBankAccNo);
             if (!string.IsNullOrEmpty(loadError))
             {
                 ReturnError("Records Error: " + loadError);
@@ -347,7 +372,7 @@ namespace ExcelProcessor
 
             if (file.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
             {
-                ProcessCsvFile(file, inputColName, keyType, outputCols, byPcno, byPis, byAccNo);
+                ProcessCsvFile(file, inputColName, keyType, outputCols, byPcno, byPis, byGpfPran, byBankAccNo);
                 return;
             }
 
@@ -463,7 +488,7 @@ namespace ExcelProcessor
                                 continue;
                             }
 
-                            EmpRecord matchedRecord = LookupRecord(cleanedVal, keyType, byPcno, byPis, byAccNo);
+                            EmpRecord matchedRecord = LookupRecord(cleanedVal, keyType, byPcno, byPis, byGpfPran, byBankAccNo);
 
                             foreach (string outCol in outputCols)
                             {
@@ -503,7 +528,7 @@ namespace ExcelProcessor
         }
 
         private void ProcessCsvFile(HttpPostedFile file, string inputColName, string keyType, List<string> outputCols,
-            Dictionary<string, EmpRecord> byPcno, Dictionary<string, EmpRecord> byPis, Dictionary<string, EmpRecord> byAccNo)
+            Dictionary<string, EmpRecord> byPcno, Dictionary<string, EmpRecord> byPis, Dictionary<string, EmpRecord> byGpfPran, Dictionary<string, EmpRecord> byBankAccNo)
         {
             try
             {
@@ -562,7 +587,7 @@ namespace ExcelProcessor
 
                     EmpRecord matchedRecord = string.IsNullOrEmpty(cleanedVal)
                         ? null
-                        : LookupRecord(cleanedVal, keyType, byPcno, byPis, byAccNo);
+                        : LookupRecord(cleanedVal, keyType, byPcno, byPis, byGpfPran, byBankAccNo);
 
                     foreach (string outCol in outputCols)
                     {
@@ -587,15 +612,31 @@ namespace ExcelProcessor
             }
         }
 
-        private string LoadViewData(out Dictionary<string, EmpRecord> byPcno, out Dictionary<string, EmpRecord> byPis, out Dictionary<string, EmpRecord> byAccNo)
+        private static bool HasColumn(OracleDataReader reader, string columnName)
+        {
+            for (int i = 0; i < reader.FieldCount; i++)
+            {
+                if (string.Equals(reader.GetName(i), columnName, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
+        }
+
+        private string LoadViewData(out Dictionary<string, EmpRecord> byPcno, 
+                                   out Dictionary<string, EmpRecord> byPis, 
+                                   out Dictionary<string, EmpRecord> byGpfPran, 
+                                   out Dictionary<string, EmpRecord> byBankAccNo)
         {
             byPcno = new Dictionary<string, EmpRecord>(StringComparer.OrdinalIgnoreCase);
             byPis = new Dictionary<string, EmpRecord>(StringComparer.OrdinalIgnoreCase);
-            byAccNo = new Dictionary<string, EmpRecord>(StringComparer.OrdinalIgnoreCase);
+            byGpfPran = new Dictionary<string, EmpRecord>(StringComparer.OrdinalIgnoreCase);
+            byBankAccNo = new Dictionary<string, EmpRecord>(StringComparer.OrdinalIgnoreCase);
 
             string tableName = GetConfigTableName();
             string pcnoCol = GetConfigPcnoColumn();
             string pisCol = GetConfigPisColumn();
+            string gpfpranCol = GetConfigGpfPranColumn();
+            string bankAccCol = GetConfigBankAccNoColumn();
             string accnoCol = GetConfigAccNoColumn();
 
             string connStr = ConfigurationManager.ConnectionStrings["OracleConn"].ConnectionString;
@@ -605,22 +646,80 @@ namespace ExcelProcessor
                 using (OracleConnection conn = new OracleConnection(connStr))
                 {
                     conn.Open();
-                    string query = string.Format("SELECT {0}, {1}, {2} FROM {3}", pcnoCol, pisCol, accnoCol, tableName);
+
+                    // Detect actual columns in the view/table
+                    HashSet<string> existingCols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    try
+                    {
+                        using (OracleCommand schemaCmd = new OracleCommand("SELECT * FROM " + tableName + " WHERE 1 = 0", conn))
+                        using (OracleDataReader schemaReader = schemaCmd.ExecuteReader(CommandBehavior.SchemaOnly))
+                        {
+                            var schemaTable = schemaReader.GetSchemaTable();
+                            if (schemaTable != null)
+                            {
+                                foreach (DataRow row in schemaTable.Rows)
+                                {
+                                    string cName = row["ColumnName"] != null ? row["ColumnName"].ToString() : "";
+                                    if (!string.IsNullOrEmpty(cName))
+                                    {
+                                        existingCols.Add(cName.ToUpperInvariant());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Fallback if schema only query fails
+                    }
+
+                    List<string> selectCols = new List<string>();
+                    string actualPcnoCol = existingCols.Count == 0 || existingCols.Contains(pcnoCol) ? pcnoCol : null;
+                    string actualPisCol = existingCols.Count == 0 || existingCols.Contains(pisCol) ? pisCol : null;
+                    string actualGpfPranCol = existingCols.Count == 0 || existingCols.Contains(gpfpranCol) ? gpfpranCol : null;
+
+                    string actualBankAccCol = null;
+                    if (existingCols.Count == 0) actualBankAccCol = bankAccCol;
+                    else if (existingCols.Contains(bankAccCol)) actualBankAccCol = bankAccCol;
+                    else if (existingCols.Contains(accnoCol)) actualBankAccCol = accnoCol;
+
+                    if (actualPcnoCol != null && !selectCols.Contains(actualPcnoCol)) selectCols.Add(actualPcnoCol);
+                    if (actualPisCol != null && !selectCols.Contains(actualPisCol)) selectCols.Add(actualPisCol);
+                    if (actualGpfPranCol != null && !selectCols.Contains(actualGpfPranCol)) selectCols.Add(actualGpfPranCol);
+                    if (actualBankAccCol != null && !selectCols.Contains(actualBankAccCol)) selectCols.Add(actualBankAccCol);
+
+                    if (selectCols.Count == 0) selectCols.Add("*");
+
+                    string query = "SELECT " + string.Join(", ", selectCols) + " FROM " + tableName;
 
                     using (OracleCommand cmd = new OracleCommand(query, conn))
                     using (OracleDataReader reader = cmd.ExecuteReader())
                     {
                         while (reader.Read())
                         {
-                            string pcno = CleanValue(reader[pcnoCol] != DBNull.Value ? reader[pcnoCol].ToString() : "");
-                            string pis = CleanValue(reader[pisCol] != DBNull.Value ? reader[pisCol].ToString() : "");
-                            string accno = CleanValue(reader[accnoCol] != DBNull.Value ? reader[accnoCol].ToString() : "");
+                            string pcno = "";
+                            string pis = "";
+                            string gpfpran = "";
+                            string bankAccNo = "";
+
+                            if (actualPcnoCol != null && HasColumn(reader, actualPcnoCol))
+                                pcno = CleanValue(reader[actualPcnoCol] != DBNull.Value ? reader[actualPcnoCol].ToString() : "");
+
+                            if (actualPisCol != null && HasColumn(reader, actualPisCol))
+                                pis = CleanValue(reader[actualPisCol] != DBNull.Value ? reader[actualPisCol].ToString() : "");
+
+                            if (actualGpfPranCol != null && HasColumn(reader, actualGpfPranCol))
+                                gpfpran = CleanValue(reader[actualGpfPranCol] != DBNull.Value ? reader[actualGpfPranCol].ToString() : "");
+
+                            if (actualBankAccCol != null && HasColumn(reader, actualBankAccCol))
+                                bankAccNo = CleanValue(reader[actualBankAccCol] != DBNull.Value ? reader[actualBankAccCol].ToString() : "");
 
                             var record = new EmpRecord
                             {
                                 Pcno = pcno,
                                 Pis = pis,
-                                AccNo = accno
+                                GpfPran = gpfpran,
+                                BankAccNo = bankAccNo
                             };
 
                             // Map by PCNO
@@ -649,20 +748,37 @@ namespace ExcelProcessor
                                 }
                             }
 
-                            // Map by ACCNO (or GPFPRAN)
-                            if (!string.IsNullOrEmpty(accno))
+                            // Map by GPFPRAN (Apply MAX(PCNO) rule)
+                            if (!string.IsNullOrEmpty(gpfpran))
                             {
                                 EmpRecord existing;
-                                if (byAccNo.TryGetValue(accno, out existing))
+                                if (byGpfPran.TryGetValue(gpfpran, out existing))
                                 {
                                     if (ComparePcno(record.Pcno, existing.Pcno) > 0)
                                     {
-                                        byAccNo[accno] = record;
+                                        byGpfPran[gpfpran] = record;
                                     }
                                 }
                                 else
                                 {
-                                    byAccNo[accno] = record;
+                                    byGpfPran[gpfpran] = record;
+                                }
+                            }
+
+                            // Map by Bank Account Number / ACCNO (Apply MAX(PCNO) rule)
+                            if (!string.IsNullOrEmpty(bankAccNo))
+                            {
+                                EmpRecord existing;
+                                if (byBankAccNo.TryGetValue(bankAccNo, out existing))
+                                {
+                                    if (ComparePcno(record.Pcno, existing.Pcno) > 0)
+                                    {
+                                        byBankAccNo[bankAccNo] = record;
+                                    }
+                                }
+                                else
+                                {
+                                    byBankAccNo[bankAccNo] = record;
                                 }
                             }
                         }
@@ -677,7 +793,10 @@ namespace ExcelProcessor
         }
 
         private static EmpRecord LookupRecord(string cleanedVal, string keyType,
-            Dictionary<string, EmpRecord> byPcno, Dictionary<string, EmpRecord> byPis, Dictionary<string, EmpRecord> byAccNo)
+            Dictionary<string, EmpRecord> byPcno, 
+            Dictionary<string, EmpRecord> byPis, 
+            Dictionary<string, EmpRecord> byGpfPran, 
+            Dictionary<string, EmpRecord> byBankAccNo)
         {
             if (string.IsNullOrEmpty(cleanedVal)) return null;
 
@@ -690,9 +809,16 @@ namespace ExcelProcessor
                 case "PIS":
                     byPis.TryGetValue(cleanedVal, out record);
                     break;
-                case "ACCNO":
                 case "GPFPRAN":
-                    byAccNo.TryGetValue(cleanedVal, out record);
+                case "GPF":
+                case "PRAN":
+                    byGpfPran.TryGetValue(cleanedVal, out record);
+                    break;
+                case "BANK_ACCNO":
+                case "ACCNO":
+                case "BANKACCNO":
+                case "BANK_ACCOUNT":
+                    byBankAccNo.TryGetValue(cleanedVal, out record);
                     break;
             }
             return record;
@@ -711,9 +837,16 @@ namespace ExcelProcessor
                 case "PIS":
                     val = record.Pis;
                     break;
-                case "ACCNO":
                 case "GPFPRAN":
-                    val = record.AccNo;
+                case "GPF":
+                case "PRAN":
+                    val = record.GpfPran;
+                    break;
+                case "BANK_ACCNO":
+                case "ACCNO":
+                case "BANKACCNO":
+                case "BANK_ACCOUNT":
+                    val = record.BankAccNo;
                     break;
             }
 
@@ -726,8 +859,9 @@ namespace ExcelProcessor
             {
                 case "PCNO": return "PCNO";
                 case "PIS": return "PIS";
-                case "ACCNO": return "ACCNO";
                 case "GPFPRAN": return "GPFPRAN";
+                case "BANK_ACCNO": return "BANK_ACCNO";
+                case "ACCNO": return "ACCNO";
                 default: return colKey;
             }
         }
@@ -761,21 +895,25 @@ namespace ExcelProcessor
 
             string norm = NormalizeHeader(headerName);
 
-            // Check GPF / PRAN first
+            // Check GPF / PRAN first (in Temp_Sh_Lpt_Sep and V_GpfpPran_Max)
             if (norm == "GPFPRAN" || norm == "GPF_PRAN" || norm == "GPF/PRAN" || norm == "GPF PRAN" ||
                 norm == "GPF" || norm == "PRAN" || norm == "GPFNO" || norm == "PRANNO" ||
-                norm == "GPF NO" || norm == "PRAN NO" || norm == "GPF_NO" || norm == "PRAN_NO")
+                norm == "GPF NO" || norm == "PRAN NO" || norm == "GPF_NO" || norm == "PRAN_NO" ||
+                norm == "GPF/PRAN NO" || norm == "GPF / PRAN NO")
             {
                 return "GPFPRAN";
             }
 
-            // Check ACCNO
-            if (norm == "ACCNO" || norm == "ACC NO" || norm == "ACC_NO" || norm == "ACC NO." ||
+            // Check Bank Account (in V_Emp_Pis_BankAccountDetails ACCNO column is Bank Account Number)
+            if (norm == "BANK_ACCNO" || norm == "BANK ACC NO" || norm == "BANK_ACC_NO" || norm == "BANK ACCNO" ||
+                norm == "BANK ACCOUNT" || norm == "BANK ACCOUNT NO" || norm == "BANK_ACCOUNT_NO" || norm == "BANK ACCOUNT NUMBER" ||
+                norm == "BANK A/C" || norm == "BANK A/C NO" || norm == "BANK A/C NUMBER" || norm == "BANK_AC_NO" ||
+                norm == "ACCNO" || norm == "ACC NO" || norm == "ACC_NO" || norm == "ACC NO." ||
                 norm == "ACCOUNT" || norm == "ACCOUNTNO" || norm == "ACCOUNT NO" || norm == "ACCOUNT_NO" ||
                 norm == "ACCOUNTNUMBER" || norm == "ACCOUNT_NUMBER" || norm == "ACCOUNT NUMBER" ||
                 norm == "ACNO" || norm == "AC NO" || norm == "AC_NO" || norm == "A/C NO" || norm == "A/C NUMBER")
             {
-                return "ACCNO";
+                return "BANK_ACCNO";
             }
 
             // Check PIS
@@ -789,7 +927,8 @@ namespace ExcelProcessor
             // Check PCNO
             if (norm == "PCNO" || norm == "PC NO" || norm == "PC NO." || norm == "PC_NO" || 
                 norm == "PCNUMBER" || norm == "PC NUMBER" || norm == "PC_NUMBER" || 
-                norm == "PCNUM" || norm == "PC_NUM")
+                norm == "PCNUM" || norm == "PC_NUM" ||
+                norm == "EMPCODE" || norm == "EMP CODE" || norm == "EMP_CODE" || norm == "EMPLOYEE CODE")
             {
                 return "PCNO";
             }
@@ -815,7 +954,8 @@ namespace ExcelProcessor
             if (detected != null)
             {
                 if (string.Equals(detected, keyType, StringComparison.OrdinalIgnoreCase)) return true;
-                if ((keyType == "ACCNO" || keyType == "GPFPRAN") && (detected == "ACCNO" || detected == "GPFPRAN")) return true;
+                if ((keyType == "BANK_ACCNO" || keyType == "ACCNO") && (detected == "BANK_ACCNO" || detected == "ACCNO")) return true;
+                if ((keyType == "GPFPRAN" || keyType == "GPF" || keyType == "PRAN") && (detected == "GPFPRAN")) return true;
             }
 
             return false;

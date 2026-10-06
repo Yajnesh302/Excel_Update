@@ -89,7 +89,7 @@
         </div>
         <div class="stat-content">
           <span class="stat-label">Supported Identifiers</span>
-          <span class="stat-value">PIS, PCNO, ACCNO, GPF</span>
+          <span class="stat-value">PIS, PCNO, GPF, Bank A/C</span>
         </div>
       </div>
     </div>
@@ -111,7 +111,7 @@
             System Overview &amp; Features
           </h5>
           <ul class="text-muted small mb-0 pl-3" style="line-height: 1.8; list-style-type: disc;">
-            <li class="mb-2"><strong>Smart Auto-Detection:</strong> Uploaded spreadsheets are automatically scanned to detect <code>ACCNO</code>, <code>PIS</code>, <code>PCNO</code>, or <code>GPFPRAN</code> headers.</li>
+            <li class="mb-2"><strong>Smart Auto-Detection:</strong> Uploaded spreadsheets are automatically scanned to detect <code>GPFPRAN</code>, <code>PIS</code>, <code>PCNO</code>, or Bank Account (<code>ACCNO</code>) headers.</li>
             <li class="mb-2"><strong>Custom Mapping:</strong> If your sheet uses unique column headers, simply choose the matching identifier column from the dropdown.</li>
             <li class="mb-2"><strong>Customizable Columns:</strong> Select any combination of employee fields to append directly to your downloaded spreadsheet.</li>
             <li><strong>Supported Formats:</strong> Works seamlessly with <strong>.xlsx</strong>, <strong>.xls</strong>, and <strong>.csv</strong> files.</li>
@@ -136,7 +136,8 @@
                   <th>Input Key</th>
                   <th style="color: #00f2fe;">+ PCNO</th>
                   <th style="color: #00ff87;">+ PIS</th>
-                  <th style="color: #4facfe;">+ ACCNO</th>
+                  <th style="color: #ffb142;">+ GPFPRAN</th>
+                  <th style="color: #4facfe;">+ Bank A/C (ACCNO)</th>
                 </tr>
               </thead>
               <tbody>
@@ -145,24 +146,28 @@
                   <td>5001</td>
                   <td>2008AE10</td>
                   <td>GPF-1111</td>
+                  <td>10000000001</td>
                 </tr>
                 <tr>
                   <td>2008AE12 <span class="badge-pis">PIS</span></td>
                   <td>5010</td>
                   <td>2008AE12</td>
                   <td>GPF-2222</td>
+                  <td>10000000010</td>
                 </tr>
                 <tr>
-                  <td>GPF-1111 <span class="badge-pis">ACC</span></td>
+                  <td>GPF-1111 <span class="badge-pis">GPF</span></td>
                   <td>5001</td>
                   <td>2008AE10</td>
                   <td>GPF-1111</td>
+                  <td>10000000001</td>
                 </tr>
                 <tr>
                   <td>5003 <span class="badge-pis">PCNO</span></td>
                   <td>5003</td>
                   <td>2012BC24</td>
                   <td>PRAN-3333</td>
+                  <td>10000000003</td>
                 </tr>
               </tbody>
             </table>

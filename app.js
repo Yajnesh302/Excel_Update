@@ -26,30 +26,30 @@
       $scope.detectedKeyType = '';
       
       $scope.selectedInputCol = '';
-      $scope.selectedKeyType = 'PIS'; // 'PCNO', 'PIS', 'ACCNO', 'GPFPRAN'
+      $scope.selectedKeyType = 'PIS'; // 'PCNO', 'PIS', 'GPFPRAN', 'BANK_ACCNO'
 
       // Supported Key Types for Dropdown
       $scope.availableKeyTypes = [
         { id: 'PCNO', name: 'PC Number (PCNO)', desc: 'Matches against Employee PC Number' },
         { id: 'PIS', name: 'PIS Number (PIS)', desc: 'Matches against PIS Number' },
-        { id: 'ACCNO', name: 'Account Number (ACCNO)', desc: 'Matches against Account Number (GPF / PRAN)' },
-        { id: 'GPFPRAN', name: 'GPF / PRAN (GPFPRAN)', desc: 'Matches against GPF / PRAN Number' }
+        { id: 'GPFPRAN', name: 'GPF / PRAN (GPFPRAN)', desc: 'Matches against GPF / PRAN Number (from Temp_Sh_Lpt_Sep / V_GpfpPran_Max)' },
+        { id: 'BANK_ACCNO', name: 'Bank Account No (ACCNO)', desc: 'Matches against Bank Account Number (from V_Emp_Pis_BankAccountDetails)' }
       ];
 
       // Available Output Columns to append to Excel
       $scope.targetColumns = [
         { id: 'PCNO', name: 'PCNO', label: 'PC Number (PCNO)', desc: 'Employee PC Number' },
         { id: 'PIS', name: 'PIS', label: 'PIS Number (PIS)', desc: 'Personnel Information System ID' },
-        { id: 'ACCNO', name: 'ACCNO', label: 'Account Number (ACCNO)', desc: 'Account / Pension ID' },
-        { id: 'GPFPRAN', name: 'GPFPRAN', label: 'GPF / PRAN (GPFPRAN)', desc: 'GPF / PRAN Account ID' }
+        { id: 'GPFPRAN', name: 'GPFPRAN', label: 'GPF / PRAN (GPFPRAN)', desc: 'GPF / PRAN Account ID' },
+        { id: 'BANK_ACCNO', name: 'BANK_ACCNO', label: 'Bank Account (ACCNO)', desc: 'Bank Account Number' }
       ];
 
       // Selected Output Columns checklist
       $scope.outputCols = {
         'PCNO': true,
         'PIS': false,
-        'ACCNO': true,
-        'GPFPRAN': false
+        'GPFPRAN': true,
+        'BANK_ACCNO': true
       };
 
       // Check database connection and table/view status
@@ -152,12 +152,14 @@
       // Smart defaults for output columns based on input key type
       $scope.applyDefaultOutputCols = function () {
         var key = $scope.selectedKeyType;
-        if (key === 'GPFPRAN' || key === 'ACCNO') {
-          $scope.outputCols = { 'PCNO': true, 'PIS': true, 'ACCNO': false, 'GPFPRAN': false };
+        if (key === 'GPFPRAN') {
+          $scope.outputCols = { 'PCNO': true, 'PIS': true, 'GPFPRAN': false, 'BANK_ACCNO': true };
         } else if (key === 'PIS') {
-          $scope.outputCols = { 'PCNO': true, 'PIS': false, 'ACCNO': true, 'GPFPRAN': false };
+          $scope.outputCols = { 'PCNO': true, 'PIS': false, 'GPFPRAN': true, 'BANK_ACCNO': true };
         } else if (key === 'PCNO') {
-          $scope.outputCols = { 'PCNO': false, 'PIS': true, 'ACCNO': true, 'GPFPRAN': false };
+          $scope.outputCols = { 'PCNO': false, 'PIS': true, 'GPFPRAN': true, 'BANK_ACCNO': true };
+        } else if (key === 'BANK_ACCNO' || key === 'ACCNO') {
+          $scope.outputCols = { 'PCNO': true, 'PIS': true, 'GPFPRAN': true, 'BANK_ACCNO': false };
         }
       };
 

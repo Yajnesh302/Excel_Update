@@ -31,7 +31,7 @@ if ($inspectRes1.detectedKeyType -eq "GPFPRAN" -and $inspectRes1.detectedColumn 
 }
 
 Write-Host "`n=========================================================="
-Write-Host "TEST 2: Process test_gpfpran.xlsx (Inject PCNO and PIS)"
+Write-Host "TEST 2: Process test_gpfpran.xlsx (Inject PCNO, PIS, and Bank ACCNO)"
 Write-Host "=========================================================="
 $boundary2 = [System.Guid]::NewGuid().ToString()
 $bodyPartsProc1 = (
@@ -47,7 +47,7 @@ $bodyPartsProc1 = (
     "GPFPRAN",
     "--$boundary2",
     "Content-Disposition: form-data; name=`"outputCols`"$LF",
-    "PCNO,PIS",
+    "PCNO,PIS,BANK_ACCNO",
     "--$boundary2--$LF"
 ) -join $LF
 
@@ -59,23 +59,23 @@ Invoke-RestMethod -Uri "$($baseUrl)?action=process" -Method Post `
 $outPkg1 = New-Object OfficeOpenXml.ExcelPackage([System.IO.FileInfo]::new("e:\Excel\out_gpfpran.xlsx"))
 $outWs1 = $outPkg1.Workbook.Worksheets[1]
 
-Write-Host "Headers: Col4 = $($outWs1.Cells[1, 4].Text), Col5 = $($outWs1.Cells[1, 5].Text)"
-Write-Host "Row 2: $($outWs1.Cells[2, 2].Text) -> PCNO: $($outWs1.Cells[2, 4].Text), PIS: $($outWs1.Cells[2, 5].Text)"
-Write-Host "Row 3: $($outWs1.Cells[3, 2].Text) -> PCNO: $($outWs1.Cells[3, 4].Text), PIS: $($outWs1.Cells[3, 5].Text)"
-Write-Host "Row 4: $($outWs1.Cells[4, 2].Text) -> PCNO: $($outWs1.Cells[4, 4].Text), PIS: $($outWs1.Cells[4, 5].Text)"
-Write-Host "Row 5: $($outWs1.Cells[5, 2].Text) -> PCNO: $($outWs1.Cells[5, 4].Text), PIS: $($outWs1.Cells[5, 5].Text)"
+Write-Host "Headers: Col4 = $($outWs1.Cells[1, 4].Text), Col5 = $($outWs1.Cells[1, 5].Text), Col6 = $($outWs1.Cells[1, 6].Text)"
+Write-Host "Row 2: $($outWs1.Cells[2, 2].Text) -> PCNO: $($outWs1.Cells[2, 4].Text), PIS: $($outWs1.Cells[2, 5].Text), Bank A/C: $($outWs1.Cells[2, 6].Text)"
+Write-Host "Row 3: $($outWs1.Cells[3, 2].Text) -> PCNO: $($outWs1.Cells[3, 4].Text), PIS: $($outWs1.Cells[3, 5].Text), Bank A/C: $($outWs1.Cells[3, 6].Text)"
+Write-Host "Row 4: $($outWs1.Cells[4, 2].Text) -> PCNO: $($outWs1.Cells[4, 4].Text), PIS: $($outWs1.Cells[4, 5].Text), Bank A/C: $($outWs1.Cells[4, 6].Text)"
+Write-Host "Row 5: $($outWs1.Cells[5, 2].Text) -> PCNO: $($outWs1.Cells[5, 4].Text), PIS: $($outWs1.Cells[5, 5].Text), Bank A/C: $($outWs1.Cells[5, 6].Text)"
 
-if ($outWs1.Cells[2, 4].Text -eq "5001" -and $outWs1.Cells[2, 5].Text -eq "2008AE10" -and
-    $outWs1.Cells[3, 4].Text -eq "5010" -and $outWs1.Cells[3, 5].Text -eq "2008AE12" -and
+if ($outWs1.Cells[2, 4].Text -eq "5001" -and $outWs1.Cells[2, 5].Text -eq "2008AE10" -and $outWs1.Cells[2, 6].Text -eq "10000000001" -and
+    $outWs1.Cells[3, 4].Text -eq "5010" -and $outWs1.Cells[3, 5].Text -eq "2008AE12" -and $outWs1.Cells[3, 6].Text -eq "10000000010" -and
     $outWs1.Cells[5, 4].Text -eq "Not Found") {
-    Write-Host "-> PASS: test_gpfpran.xlsx matched and appended correctly!" -ForegroundColor Green
+    Write-Host "-> PASS: test_gpfpran.xlsx matched and appended correctly with Bank Account!" -ForegroundColor Green
 } else {
     Write-Host "-> FAIL: Unexpected values in out_gpfpran.xlsx" -ForegroundColor Red
 }
 $outPkg1.Dispose()
 
 Write-Host "`n=========================================================="
-Write-Host "TEST 3: Process test_pis_max.xlsx (CRITICAL: MAX(PCNO) Rule)"
+Write-Host "TEST 3: Process test_pis_max.xlsx (MAX(PCNO) Rule + Bank Account Number)"
 Write-Host "=========================================================="
 $fileBytes2 = [System.IO.File]::ReadAllBytes("e:\Excel\test_pis_max.xlsx")
 $boundary3 = [System.Guid]::NewGuid().ToString()
@@ -92,7 +92,7 @@ $bodyPartsProc2 = (
     "PIS",
     "--$boundary3",
     "Content-Disposition: form-data; name=`"outputCols`"$LF",
-    "PCNO,ACCNO",
+    "PCNO,BANK_ACCNO,GPFPRAN",
     "--$boundary3--$LF"
 ) -join $LF
 
@@ -104,19 +104,30 @@ Invoke-RestMethod -Uri "$($baseUrl)?action=process" -Method Post `
 $outPkg2 = New-Object OfficeOpenXml.ExcelPackage([System.IO.FileInfo]::new("e:\Excel\out_pis_max.xlsx"))
 $outWs2 = $outPkg2.Workbook.Worksheets[1]
 
-Write-Host "Row 2: PIS $($outWs2.Cells[2, 2].Text) -> PCNO: $($outWs2.Cells[2, 4].Text), ACCNO: $($outWs2.Cells[2, 5].Text)"
-Write-Host "Row 3: PIS $($outWs2.Cells[3, 2].Text) -> PCNO: $($outWs2.Cells[3, 4].Text), ACCNO: $($outWs2.Cells[3, 5].Text)"
-Write-Host "Row 4: PIS $($outWs2.Cells[4, 2].Text) -> PCNO: $($outWs2.Cells[4, 4].Text), ACCNO: $($outWs2.Cells[4, 5].Text)"
-Write-Host "Row 5: PIS $($outWs2.Cells[5, 2].Text) -> PCNO: $($outWs2.Cells[5, 4].Text), ACCNO: $($outWs2.Cells[5, 5].Text)"
+Write-Host "Headers: Col4 = $($outWs2.Cells[1, 4].Text), Col5 = $($outWs2.Cells[1, 5].Text), Col6 = $($outWs2.Cells[1, 6].Text)"
+Write-Host "Row 2: PIS $($outWs2.Cells[2, 2].Text) -> PCNO: $($outWs2.Cells[2, 4].Text), Bank A/C: $($outWs2.Cells[2, 5].Text), GPFPRAN: $($outWs2.Cells[2, 6].Text)"
+Write-Host "Row 3: PIS $($outWs2.Cells[3, 2].Text) -> PCNO: $($outWs2.Cells[3, 4].Text), Bank A/C: $($outWs2.Cells[3, 5].Text), GPFPRAN: $($outWs2.Cells[3, 6].Text)"
+Write-Host "Row 4: PIS $($outWs2.Cells[4, 2].Text) -> PCNO: $($outWs2.Cells[4, 4].Text), Bank A/C: $($outWs2.Cells[4, 5].Text), GPFPRAN: $($outWs2.Cells[4, 6].Text)"
+Write-Host "Row 5: PIS $($outWs2.Cells[5, 2].Text) -> PCNO: $($outWs2.Cells[5, 4].Text), Bank A/C: $($outWs2.Cells[5, 5].Text), GPFPRAN: $($outWs2.Cells[5, 6].Text)"
 
 $p2 = $outWs2.Cells[2, 4].Text
-$p3 = $outWs2.Cells[3, 4].Text
-$p4 = $outWs2.Cells[4, 4].Text
+$b2 = $outWs2.Cells[2, 5].Text
+$g2 = $outWs2.Cells[2, 6].Text
 
-if ($p2 -eq "5001" -and $p3 -eq "5010" -and $p4 -eq "5025") {
-    Write-Host "-> PASS: Correctly resolved! PIS 2008AE12 => $p3 (from 5002, 5010), PIS 2015EF48 => $p4 (from 5015, 5025)" -ForegroundColor Green
+$p3 = $outWs2.Cells[3, 4].Text
+$b3 = $outWs2.Cells[3, 5].Text
+$g3 = $outWs2.Cells[3, 6].Text
+
+$p4 = $outWs2.Cells[4, 4].Text
+$b4 = $outWs2.Cells[4, 5].Text
+$g4 = $outWs2.Cells[4, 6].Text
+
+if ($p2 -eq "5001" -and $b2 -eq "10000000001" -and $g2 -eq "GPF-1111" -and
+    $p3 -eq "5010" -and $b3 -eq "10000000010" -and $g3 -eq "GPF-2222" -and
+    $p4 -eq "5025" -and $b4 -eq "10000000025" -and $g4 -eq "GPF-5555") {
+    Write-Host "-> PASS: Correctly resolved! PIS 2008AE12 => PCNO $p3, Bank A/C $b3; PIS 2015EF48 => PCNO $p4, Bank A/C $b4" -ForegroundColor Green
 } else {
-    Write-Host "-> FAIL: Expected PIS 2008AE12 => 5010, PIS 2015EF48 => 5025. Got PIS 2008AE12 => $p3, PIS 2015EF48 => $p4" -ForegroundColor Red
+    Write-Host "-> FAIL: Unexpected values in out_pis_max.xlsx" -ForegroundColor Red
 }
 $outPkg2.Dispose()
 
@@ -138,7 +149,7 @@ $bodyPartsProc3 = (
     "PCNO",
     "--$boundary4",
     "Content-Disposition: form-data; name=`"outputCols`"$LF",
-    "PIS,ACCNO,GPFPRAN",
+    "PIS,BANK_ACCNO,GPFPRAN",
     "--$boundary4--$LF"
 ) -join $LF
 
@@ -151,11 +162,11 @@ $outPkg3 = New-Object OfficeOpenXml.ExcelPackage([System.IO.FileInfo]::new("e:\E
 $outWs3 = $outPkg3.Workbook.Worksheets[1]
 
 Write-Host "Headers: Col4 = $($outWs3.Cells[1, 4].Text), Col5 = $($outWs3.Cells[1, 5].Text), Col6 = $($outWs3.Cells[1, 6].Text)"
-Write-Host "Row 2: EmpCode $($outWs3.Cells[2, 2].Text) -> PIS: $($outWs3.Cells[2, 4].Text), ACCNO: $($outWs3.Cells[2, 5].Text), GPFPRAN: $($outWs3.Cells[2, 6].Text)"
-Write-Host "Row 3: EmpCode $($outWs3.Cells[3, 2].Text) -> PIS: $($outWs3.Cells[3, 4].Text), ACCNO: $($outWs3.Cells[3, 5].Text), GPFPRAN: $($outWs3.Cells[3, 6].Text)"
+Write-Host "Row 2: EmpCode $($outWs3.Cells[2, 2].Text) -> PIS: $($outWs3.Cells[2, 4].Text), Bank A/C: $($outWs3.Cells[2, 5].Text), GPFPRAN: $($outWs3.Cells[2, 6].Text)"
+Write-Host "Row 3: EmpCode $($outWs3.Cells[3, 2].Text) -> PIS: $($outWs3.Cells[3, 4].Text), Bank A/C: $($outWs3.Cells[3, 5].Text), GPFPRAN: $($outWs3.Cells[3, 6].Text)"
 
-if ($outWs3.Cells[2, 4].Text -eq "2008AE10" -and $outWs3.Cells[2, 5].Text -eq "GPF-1111" -and
-    $outWs3.Cells[3, 4].Text -eq "2008AE12" -and $outWs3.Cells[3, 5].Text -eq "GPF-2222") {
+if ($outWs3.Cells[2, 4].Text -eq "2008AE10" -and $outWs3.Cells[2, 5].Text -eq "10000000001" -and $outWs3.Cells[2, 6].Text -eq "GPF-1111" -and
+    $outWs3.Cells[3, 4].Text -eq "2008AE12" -and $outWs3.Cells[3, 5].Text -eq "10000000010" -and $outWs3.Cells[3, 6].Text -eq "GPF-2222") {
     Write-Host "-> PASS: Manual mapping with PCNO lookup passed flawlessly!" -ForegroundColor Green
 } else {
     Write-Host "-> FAIL: Unexpected values in out_custom.xlsx" -ForegroundColor Red
