@@ -640,6 +640,16 @@ body {
   padding: 14px 18px;
 }
 
+.custom-alert-warning {
+  border-radius: 10px;
+  background: var(--warning-light);
+  border: 1px solid var(--warning-border);
+  color: #92400e;
+  font-size: 13.5px;
+  margin-bottom: 20px;
+  padding: 14px 18px;
+}
+
 /* Responsive tweaks */
 @media (max-width: 991px) {
   .app-container {

@@ -4,6 +4,14 @@ $baseUrl = "http://localhost:51234/default.aspx"
 $loginUrl = "http://localhost:51234/Login.aspx"
 $LF = "`r`n"
 
+$iisProc = Get-Process -Name iisexpress -ErrorAction SilentlyContinue
+if (-not $iisProc) {
+    Write-Host "Starting IIS Express on port 51234..."
+    $iisPath = "C:\Program Files\IIS Express\iisexpress.exe"
+    Start-Process -FilePath $iisPath -ArgumentList "/path:e:\Excel /port:51234" -WindowStyle Hidden
+    Start-Sleep -Seconds 3
+}
+
 Write-Host "=========================================================="
 Write-Host "AUTHENTICATION & ACCESS CONTROL TESTS"
 Write-Host "=========================================================="

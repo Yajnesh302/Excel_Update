@@ -14,6 +14,8 @@
       
       $scope.errorMsg = '';
       $scope.successMsg = '';
+      $scope.duplicateCount = 0;
+      $scope.highlightDuplicates = true;
 
       // Excel inspection results
       $scope.sheetNames = [];
@@ -87,6 +89,7 @@
         $scope.fileName = file.name;
         $scope.errorMsg = '';
         $scope.successMsg = '';
+        $scope.duplicateCount = 0;
         $scope.sheetNames = [];
         $scope.selectedSheet = '';
         $scope.excelColumns = [];
@@ -233,6 +236,7 @@
         $scope.clearFileDirect();
         $scope.successMsg = '';
         $scope.errorMsg = '';
+        $scope.duplicateCount = 0;
       };
 
       // Get count of selected output columns
@@ -287,6 +291,7 @@
         fd.append('outputCols', outputList.join(','));
         fd.append('sheet', $scope.selectedSheet);
         fd.append('sheets', $scope.selectedSheet);
+        fd.append('highlightDuplicates', $scope.highlightDuplicates ? 'true' : 'false');
 
         $http.post('default.aspx?action=process', fd, {
           transformRequest: angular.identity,
@@ -331,7 +336,15 @@
           document.body.removeChild(a);
           URL.revokeObjectURL(downloadUrl);
 
-          $scope.successMsg = 'Spreadsheet processed successfully and downloaded! (Matched using ' + $scope.selectedKeyType + ')';
+          var dupHeader = response.headers('X-Duplicate-Count') || response.headers('x-duplicate-count');
+          var dupCount = dupHeader ? parseInt(dupHeader, 10) : 0;
+          $scope.duplicateCount = dupCount;
+
+          if (dupCount > 0) {
+            $scope.successMsg = 'Spreadsheet processed successfully and downloaded! ' + dupCount + ' duplicate row(s) detected and highlighted in soft yellow for review. (Matched using ' + $scope.selectedKeyType + ')';
+          } else {
+            $scope.successMsg = 'Spreadsheet processed successfully and downloaded! (Matched using ' + $scope.selectedKeyType + ')';
+          }
         }, function (error) {
           $scope.isProcessing = false;
           $scope.errorMsg = 'Failed to process spreadsheet. Please verify service connection and file format.';

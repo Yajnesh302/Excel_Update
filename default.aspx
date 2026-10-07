@@ -149,6 +149,19 @@
           <div class="custom-alert-success" ng-if="successMsg" role="alert">
             <strong>Success:</strong> {{ successMsg }}
           </div>
+          <div class="custom-alert-warning" ng-if="duplicateCount > 0" role="alert">
+            <div class="d-flex align-items-start">
+              <span style="font-size: 1.3rem; margin-right: 12px; line-height: 1.2;">⚠️</span>
+              <div>
+                <strong>Duplicate Entries Detected:</strong>
+                <div>{{ duplicateCount }} row(s) contain repeated identifier values and have been highlighted with a soft yellow fill in your downloaded Excel sheet.</div>
+                <div class="mt-2 small" style="opacity: 0.95;">
+                  &bull; <strong>If duplicate is not required:</strong> Simply select and delete the row in Excel.<br />
+                  &bull; <strong>If duplicate is required:</strong> Select the highlighted row/cells in Excel and click <em>Fill Color &rarr; No Fill</em> to clear the highlight easily.
+                </div>
+              </div>
+            </div>
+          </div>
 
           <!-- Upload Drop Zone (Visible when no file is selected) -->
           <div id="drop-zone" class="drop-zone mb-4" ng-show="!fileSelected">
@@ -307,6 +320,25 @@
                   </label>
                 </div>
               </div>
+            </div>
+
+            <!-- Card 3: Duplicate Detection & Highlighting -->
+            <div class="mapping-card">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <label class="section-label small font-weight-bold text-uppercase mb-0" style="letter-spacing: 0.5px;">3. Duplicate Identifier Handling</label>
+                <span class="badge" style="background: #fef3c7; color: #92400e; border: 1px solid #fde68a; font-size: 11px; padding: 4px 8px; border-radius: 6px;">
+                  ⚠️ Duplicate Detection
+                </span>
+              </div>
+              <label class="output-checkbox-card" ng-class="{'active': highlightDuplicates}" style="cursor: pointer; display: flex; align-items: flex-start; gap: 12px; margin-bottom: 0;">
+                <input type="checkbox" ng-model="highlightDuplicates" style="margin-top: 3px; cursor: pointer;" />
+                <div>
+                  <div class="font-weight-bold small checkbox-title">Highlight Duplicate Rows in Excel (Soft Yellow Fill)</div>
+                  <div class="text-muted" style="font-size: 11.5px; line-height: 1.4; margin-top: 3px;">
+                    When enabled, any rows containing duplicate values in the identifier column will be highlighted across the whole row. If you don't need a duplicate, you can delete it in Excel; if you need to keep it, simply click <strong>Fill Color &rarr; No Fill</strong>.
+                  </div>
+                </div>
+              </label>
             </div>
 
             <!-- Action Button -->

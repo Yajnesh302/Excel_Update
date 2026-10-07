@@ -413,9 +413,14 @@ namespace ExcelProcessor
                 return;
             }
 
+            string highlightDuplicatesParam = Request.Form["highlightDuplicates"];
+            bool highlightDuplicates = string.IsNullOrWhiteSpace(highlightDuplicatesParam) ||
+                string.Equals(highlightDuplicatesParam, "true", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(highlightDuplicatesParam, "1", StringComparison.OrdinalIgnoreCase);
+
             if (file.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
             {
-                ProcessCsvFile(file, inputColName, keyType, outputCols, byPcno, byPis, byGpfPran, byBankAccNo);
+                ProcessCsvFile(file, inputColName, keyType, outputCols, byPcno, byPis, byGpfPran, byBankAccNo, highlightDuplicates);
                 return;
             }
 
@@ -507,11 +512,63 @@ namespace ExcelProcessor
                         ws.Cells[headerRowIndex, currentColCount].Value = GetOutputColumnHeaderTitle(outCol);
                     }
 
+                    // Duplicate Detection in Identifier Column
+                    Dictionary<string, int> valOccurrences = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                    for (int r = headerRowIndex + 1; r <= rCount; r++)
+                    {
+                        string rawVal = ws.Cells[r, inputColIndex].Text;
+                        if (string.IsNullOrEmpty(rawVal) && ws.Cells[r, inputColIndex].Value != null)
+                        {
+                            rawVal = ws.Cells[r, inputColIndex].Value.ToString();
+                        }
+                        string cleanedVal = CleanValue(rawVal);
+                        if (!string.IsNullOrEmpty(cleanedVal))
+                        {
+                            int count;
+                            if (valOccurrences.TryGetValue(cleanedVal, out count))
+                            {
+                                valOccurrences[cleanedVal] = count + 1;
+                            }
+                            else
+                            {
+                                valOccurrences[cleanedVal] = 1;
+                            }
+                        }
+                    }
+
+                    HashSet<string> duplicateKeysFound = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var pair in valOccurrences)
+                    {
+                        if (pair.Value > 1)
+                        {
+                            duplicateKeysFound.Add(pair.Key);
+                        }
+                    }
+
+                    int duplicateRowCount = 0;
+
                     // 3. Process each row
                     for (int r = headerRowIndex + 1; r <= rCount; r++)
                     {
                         string rawVal = ws.Cells[r, inputColIndex].Text;
+                        if (string.IsNullOrEmpty(rawVal) && ws.Cells[r, inputColIndex].Value != null)
+                        {
+                            rawVal = ws.Cells[r, inputColIndex].Value.ToString();
+                        }
                         string cleanedVal = CleanValue(rawVal);
+
+                        bool isDuplicateRow = !string.IsNullOrEmpty(cleanedVal) && duplicateKeysFound.Contains(cleanedVal);
+                        if (isDuplicateRow)
+                        {
+                            duplicateRowCount++;
+                            if (highlightDuplicates)
+                            {
+                                // Highlight entire row in soft yellow (#FFF2CC) for easy user review & removal
+                                var rowCells = ws.Cells[r, 1, r, currentColCount];
+                                rowCells.Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
+                                rowCells.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.FromArgb(255, 242, 204));
+                            }
+                        }
 
                         if (string.IsNullOrEmpty(cleanedVal))
                         {
@@ -539,6 +596,8 @@ namespace ExcelProcessor
                     Response.Clear();
                     Response.ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
                     Response.AddHeader("Content-Disposition", string.Format("attachment; filename=\"{0}\"", file.FileName));
+                    Response.AddHeader("Access-Control-Expose-Headers", "X-Duplicate-Count");
+                    Response.AddHeader("X-Duplicate-Count", duplicateRowCount.ToString());
                     Response.BinaryWrite(fileBytes);
                     Response.Flush();
                     Response.SuppressContent = true;
@@ -552,7 +611,8 @@ namespace ExcelProcessor
         }
 
         private void ProcessCsvFile(HttpPostedFile file, string inputColName, string keyType, List<string> outputCols,
-            Dictionary<string, EmpRecord> byPcno, Dictionary<string, EmpRecord> byPis, Dictionary<string, EmpRecord> byGpfPran, Dictionary<string, EmpRecord> byBankAccNo)
+            Dictionary<string, EmpRecord> byPcno, Dictionary<string, EmpRecord> byPis, Dictionary<string, EmpRecord> byGpfPran, Dictionary<string, EmpRecord> byBankAccNo,
+            bool highlightDuplicates)
         {
             try
             {
@@ -598,6 +658,35 @@ namespace ExcelProcessor
                     headerRow.Add(GetOutputColumnHeaderTitle(outCol));
                 }
 
+                // Detect duplicates in CSV input column
+                Dictionary<string, int> valOccurrences = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                for (int r = headerRowIndex + 1; r < rowCount; r++)
+                {
+                    var row = csvRows[r];
+                    string rawVal = (inputColIndex < row.Count) ? row[inputColIndex] : "";
+                    string cleanedVal = CleanValue(rawVal);
+                    if (!string.IsNullOrEmpty(cleanedVal))
+                    {
+                        int count;
+                        if (valOccurrences.TryGetValue(cleanedVal, out count))
+                        {
+                            valOccurrences[cleanedVal] = count + 1;
+                        }
+                        else
+                        {
+                            valOccurrences[cleanedVal] = 1;
+                        }
+                    }
+                }
+
+                HashSet<string> duplicateKeysFound = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var pair in valOccurrences)
+                {
+                    if (pair.Value > 1) duplicateKeysFound.Add(pair.Key);
+                }
+
+                int duplicateRowCount = 0;
+
                 for (int r = headerRowIndex + 1; r < rowCount; r++)
                 {
                     var row = csvRows[r];
@@ -608,6 +697,11 @@ namespace ExcelProcessor
 
                     string rawVal = (inputColIndex < row.Count) ? row[inputColIndex] : "";
                     string cleanedVal = CleanValue(rawVal);
+
+                    if (!string.IsNullOrEmpty(cleanedVal) && duplicateKeysFound.Contains(cleanedVal))
+                    {
+                        duplicateRowCount++;
+                    }
 
                     EmpRecord matchedRecord = string.IsNullOrEmpty(cleanedVal)
                         ? null
@@ -625,6 +719,8 @@ namespace ExcelProcessor
                 Response.Clear();
                 Response.ContentType = "text/csv";
                 Response.AddHeader("Content-Disposition", string.Format("attachment; filename=\"{0}\"", file.FileName));
+                Response.AddHeader("Access-Control-Expose-Headers", "X-Duplicate-Count");
+                Response.AddHeader("X-Duplicate-Count", duplicateRowCount.ToString());
                 Response.BinaryWrite(fileBytes);
                 Response.Flush();
                 Response.SuppressContent = true;
